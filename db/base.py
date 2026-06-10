@@ -1,6 +1,7 @@
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase
 from config import settings
+from monitoring.hooks import setup_db_hooks
 
 engine = create_async_engine(
     settings.database_url,
@@ -9,6 +10,8 @@ engine = create_async_engine(
     pool_pre_ping=True,           # test connections before use
     echo=(settings.app_env == "development"),
 )
+
+setup_db_hooks(engine)
 
 AsyncSessionFactory = async_sessionmaker(
     engine,

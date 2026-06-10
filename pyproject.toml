@@ -33,13 +33,15 @@ dependencies = [
     "pydantic>=2.9.2",
     "pydantic-settings>=2.5.2",
 
-    # Terminal UI
+    # UI
     "rich>=13.8.1",
+    "nicegui>=1.4.33",
 
     # Utilities
     "python-dotenv>=1.0.1",
     "httpx>=0.27.2",
     "tenacity>=9.0.0",
+
 ]
 
 [project.optional-dependencies]

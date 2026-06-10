@@ -9,37 +9,57 @@ MIGRATION_SQL = """
 -- ─────────────────────────────────────────────────
 -- TRIGGER 1: Auto-calculate order total
 -- ─────────────────────────────────────────────────
-CREATE OR REPLACE FUNCTION recalculate_order_total()
+CREATE OR REPLACE FUNCTION calculate_item_subtotal()
 RETURNS TRIGGER AS $$
 BEGIN
-    -- Auto-compute subtotal on each item
-    IF TG_TABLE_NAME = 'order_items' THEN
-        NEW.subtotal := NEW.price_snapshot * NEW.quantity;
-    END IF;
-
-    -- Recompute order total from all items
-    UPDATE orders
-    SET
-        total      = COALESCE((
-            SELECT SUM(price_snapshot * quantity)
-            FROM   order_items
-            WHERE  order_id = COALESCE(NEW.order_id, OLD.order_id)
-        ), 0),
-        updated_at = NOW()
-    WHERE id = COALESCE(NEW.order_id, OLD.order_id);
-
+    NEW.subtotal := NEW.price_snapshot * NEW.quantity;
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
 
+CREATE OR REPLACE FUNCTION recalculate_order_total()
+RETURNS TRIGGER AS $$
+DECLARE
+    v_order_id INT;
+BEGIN
+    IF TG_OP = 'DELETE' THEN
+        v_order_id := OLD.order_id;
+    ELSE
+        v_order_id := NEW.order_id;
+    END IF;
+
+    UPDATE orders
+    SET
+        total      = COALESCE((
+            SELECT SUM(subtotal)
+            FROM   order_items
+            WHERE  order_id = v_order_id
+        ), 0),
+        updated_at = NOW()
+    WHERE id = v_order_id;
+
+    RETURN NULL;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_item_subtotal_insert ON order_items;
+CREATE TRIGGER trg_item_subtotal_insert
+BEFORE INSERT ON order_items
+FOR EACH ROW EXECUTE FUNCTION calculate_item_subtotal();
+
+DROP TRIGGER IF EXISTS trg_item_subtotal_update ON order_items;
+CREATE TRIGGER trg_item_subtotal_update
+BEFORE UPDATE ON order_items
+FOR EACH ROW EXECUTE FUNCTION calculate_item_subtotal();
+
 DROP TRIGGER IF EXISTS trg_order_total_insert ON order_items;
 CREATE TRIGGER trg_order_total_insert
-BEFORE INSERT ON order_items
+AFTER INSERT ON order_items
 FOR EACH ROW EXECUTE FUNCTION recalculate_order_total();
 
 DROP TRIGGER IF EXISTS trg_order_total_update ON order_items;
 CREATE TRIGGER trg_order_total_update
-BEFORE UPDATE ON order_items
+AFTER UPDATE ON order_items
 FOR EACH ROW EXECUTE FUNCTION recalculate_order_total();
 
 DROP TRIGGER IF EXISTS trg_order_total_delete ON order_items;

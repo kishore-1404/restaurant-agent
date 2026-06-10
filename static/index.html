@@ -1,0 +1,995 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Restaurant AI</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:ital,wght@0,400;0,500;0,600;0,700;1,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* ─── VARIABLES ─────────────────────────────────────────────── */
+:root {
+  --bg:       #0d0f14;
+  --surface:  #161a22;
+  --surface2: #1d2330;
+  --border:   rgba(255,255,255,0.07);
+  --border2:  rgba(255,255,255,0.13);
+  --text:     #dde3ed;
+  --text2:    #8892a4;
+  --text3:    #404b5e;
+  --accent:   #6366f1;
+  --acc-rgb:  99,102,241;
+  --r:        10px;
+  --font:     'Inter', -apple-system, sans-serif;
+  --mono:     'JetBrains Mono', 'Fira Code', monospace;
+}
+/* ─── RESET ─────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; font-family: var(--font); font-size: 15px;
+  background: var(--bg); color: var(--text); -webkit-font-smoothing: antialiased; }
+#app { height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+::-webkit-scrollbar { width: 3px; }
+::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.11); border-radius: 2px; }
+button { font-family: var(--font); cursor: pointer; }
+
+/* ─── SCREENS ────────────────────────────────────────────────── */
+.screen { display: none; flex: 1; flex-direction: column; overflow: hidden; }
+.screen.active { display: flex; }
+
+/* ─── TOP NAV ────────────────────────────────────────────────── */
+.nav {
+  height: 52px; flex-shrink: 0;
+  display: flex; align-items: center; padding: 0 24px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+}
+.nav-brand {
+  font-size: 13px; font-weight: 600; letter-spacing: .04em;
+  display: flex; align-items: center; gap: 9px;
+}
+.nav-pulse {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--accent); box-shadow: 0 0 9px var(--accent);
+  animation: pulse 2.5s ease infinite;
+}
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+
+/* ─── SELECT SCREEN ──────────────────────────────────────────── */
+.select-body {
+  flex: 1; overflow-y: auto;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  padding: 48px 24px;
+}
+.select-body h1 {
+  font-size: clamp(22px, 4vw, 34px); font-weight: 700;
+  letter-spacing: -.025em; color: var(--text); text-align: center; margin-bottom: 8px;
+}
+.select-sub { font-size: 14px; color: var(--text2); text-align: center; margin-bottom: 48px; }
+
+/* Restaurant grid */
+.r-grid {
+  display: grid; grid-template-columns: repeat(3,1fr);
+  gap: 18px; max-width: 860px; width: 100%;
+}
+@media (max-width: 720px) { .r-grid { grid-template-columns: 1fr; max-width: 380px; } }
+@media (max-width: 960px) and (min-width: 721px) { .r-grid { grid-template-columns: repeat(2,1fr); } }
+
+.r-card {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
+  overflow: hidden; cursor: pointer;
+  transition: transform .25s cubic-bezier(.4,0,.2,1), border-color .25s, box-shadow .25s;
+}
+.r-card:hover { transform: translateY(-5px); border-color: var(--border2); }
+.r-hero {
+  height: 88px; display: flex; align-items: center; justify-content: center; font-size: 46px;
+}
+.r-body { padding: 16px 18px 20px; }
+.r-name { font-size: 15px; font-weight: 600; color: var(--text); margin-bottom: 2px; }
+.r-cuisine { font-size: 11px; color: var(--text2); letter-spacing: .03em; margin-bottom: 12px; }
+.r-sep { height: 1px; background: var(--border); margin-bottom: 11px; }
+.r-tagline { font-size: 12px; color: var(--text3); line-height: 1.55; margin-bottom: 16px; }
+.r-btn {
+  width: 100%; padding: 9px 0; border: none; border-radius: 8px;
+  font-size: 13px; font-weight: 500; color: #fff; letter-spacing: .02em;
+  transition: filter .15s, transform .1s;
+}
+.r-btn:hover { filter: brightness(1.14); }
+.r-btn:active { transform: scale(.98); }
+
+/* ─── CHAT HEADER ────────────────────────────────────────────── */
+.chat-nav {
+  height: 52px; flex-shrink: 0;
+  display: flex; align-items: center; gap: 11px; padding: 0 18px;
+  border-bottom: 1px solid var(--border); background: var(--bg);
+}
+.back-btn {
+  width: 30px; height: 30px; border-radius: 7px;
+  border: 1px solid var(--border); background: none; color: var(--text2); font-size: 15px;
+  display: flex; align-items: center; justify-content: center;
+  transition: color .15s, border-color .15s;
+}
+.back-btn:hover { color: var(--text); border-color: var(--border2); }
+.cnav-emoji { font-size: 19px; }
+.cnav-info  { display: flex; flex-direction: column; line-height: 1.2; }
+.cnav-name  { font-size: 14px; font-weight: 600; color: var(--text); }
+.cnav-sub   { font-size: 11px; color: var(--text2); }
+.cnav-space { flex: 1; }
+/* stage track */
+.stage-track { display: flex; align-items: center; }
+.sdot {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--text3); flex-shrink: 0;
+  transition: background .35s, box-shadow .35s;
+  cursor: default; position: relative;
+}
+.sdot[title]:hover::after {
+  content: attr(title);
+  position: absolute; bottom: 14px; left: 50%; transform: translateX(-50%);
+  background: var(--surface2); border: 1px solid var(--border2);
+  color: var(--text); font-size: 10px; padding: 2px 7px; border-radius: 4px;
+  white-space: nowrap; pointer-events: none; z-index: 10;
+}
+.sdot.done   { background: var(--accent); opacity: .55; }
+.sdot.active { background: var(--accent); box-shadow: 0 0 9px var(--accent);
+               animation: sdot-pulse 2s ease infinite; }
+@keyframes sdot-pulse { 0%,100%{box-shadow:0 0 8px var(--accent)} 50%{box-shadow:0 0 20px var(--accent)} }
+.sline { width: 16px; height: 1px; background: var(--border); flex-shrink: 0; }
+.sline.done { background: var(--accent); opacity: .3; }
+.session-chip {
+  font-size: 10px; color: var(--text3); font-family: var(--mono);
+  background: var(--surface); border: 1px solid var(--border);
+  padding: 3px 9px; border-radius: 20px;
+}
+.provider-chip {
+  font-size: 10px; color: var(--accent); font-family: var(--mono);
+  background: rgba(99, 102, 241, 0.08); border: 1px solid rgba(99, 102, 241, 0.2);
+  padding: 3px 9px; border-radius: 20px;
+}
+
+/* ─── CHAT BODY ──────────────────────────────────────────────── */
+.chat-body { flex: 1; display: flex; overflow: hidden; min-height: 0; }
+
+/* Messages column */
+.chat-main { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-height: 0; }
+.messages  { flex: 1; overflow-y: auto; padding: 24px 26px; display: flex;
+              flex-direction: column; scroll-behavior: smooth; }
+
+/* ─── MESSAGE BUBBLES ────────────────────────────────────────── */
+.msg { display: flex; gap: 10px; margin-bottom: 18px; animation: msg-in .2s ease both; }
+@keyframes msg-in { from{opacity:0;transform:translateY(7px)} to{opacity:1;transform:none} }
+
+.msg-avatar {
+  width: 28px; height: 28px; border-radius: 7px; flex-shrink: 0; margin-top: 1px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 14px; background: var(--surface); border: 1px solid var(--border);
+}
+.msg-body  { flex: 1; min-width: 0; }
+.msg-meta  { display: flex; align-items: baseline; gap: 7px; margin-bottom: 4px; }
+.msg-name  { font-size: 12px; font-weight: 600; color: var(--text); }
+.msg-time  { font-size: 10px; color: var(--text3); }
+/* AI message text — rendered as markdown */
+.msg-text  { font-size: 14px; line-height: 1.75; color: var(--text); }
+
+/* User bubble */
+.user-msg { flex-direction: row-reverse; gap: 0; }
+.user-msg .msg-body { align-items: flex-end; display: flex; flex-direction: column; }
+.user-msg .msg-meta { flex-direction: row-reverse; }
+.user-msg .msg-name { display: none; }
+.user-msg .msg-text {
+  background: var(--surface2); border: 1px solid var(--border);
+  border-radius: 13px 2px 13px 13px;
+  padding: 10px 14px; max-width: 66%; font-size: 14px; color: var(--text);
+}
+
+/* ─── MARKDOWN ───────────────────────────────────────────────── */
+.md p                 { margin: 0 0 9px; }
+.md p:last-child      { margin: 0; }
+.md strong            { font-weight: 600; color: var(--text); }
+.md em                { font-style: italic; color: var(--text2); }
+.md a                 { color: var(--accent); text-decoration: none; }
+.md a:hover           { text-decoration: underline; }
+.md h1,.md h2,.md h3  { font-weight: 600; color: var(--text); margin: 14px 0 5px; }
+.md h1 { font-size: 17px; } .md h2 { font-size: 15px; } .md h3 { font-size: 14px; }
+.md code {
+  background: var(--surface2); border: 1px solid var(--border);
+  padding: 1px 5px; border-radius: 5px;
+  font-family: var(--mono); font-size: 12.5px; color: #c9b1fd;
+}
+.md pre {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 9px; padding: 13px 16px; overflow-x: auto; margin: 10px 0;
+}
+.md pre code { background:none; border:none; padding:0; color: var(--text); font-size:13px; }
+.md ul, .md ol        { padding-left: 22px; margin: 7px 0; }
+.md li                { margin: 4px 0; font-size: 14px; }
+.md li > p            { margin: 0; }
+.md blockquote {
+  border-left: 3px solid var(--accent); margin: 9px 0;
+  padding: 4px 14px; color: var(--text2); font-style: italic;
+}
+.md hr                { border: none; border-top: 1px solid var(--border); margin: 14px 0; }
+.md table             { width:100%; border-collapse: collapse; margin: 10px 0; font-size: 13px; }
+.md th {
+  background: var(--surface2); padding: 7px 13px;
+  border: 1px solid var(--border); font-weight: 600; text-align: left; color: var(--text);
+}
+.md td                { padding: 7px 13px; border: 1px solid var(--border); color: var(--text2); }
+.md tr:nth-child(even) td { background: rgba(255,255,255,.02); }
+
+/* ─── TYPING INDICATOR ───────────────────────────────────────── */
+.typing { display: flex; align-items: center; gap: 4px; padding: 3px 0; }
+.typing span {
+  width: 6px; height: 6px; border-radius: 50%; background: var(--text3);
+  animation: type-bounce 1.4s ease infinite;
+}
+.typing span:nth-child(2) { animation-delay: .16s; }
+.typing span:nth-child(3) { animation-delay: .32s; }
+@keyframes type-bounce {
+  0%,60%,100% { transform: translateY(0); opacity:.4; }
+  30%          { transform: translateY(-5px); opacity:1; }
+}
+
+/* Streaming cursor */
+.cur {
+  display: inline-block; width: 2px; height: 14px;
+  vertical-align: text-bottom; margin-left: 1px; border-radius: 1px;
+  background: var(--accent); animation: blink .9s step-start infinite;
+}
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
+
+/* ─── INPUT AREA ─────────────────────────────────────────────── */
+.input-area {
+  padding: 11px 18px; border-top: 1px solid var(--border);
+  display: flex; align-items: flex-end; gap: 9px;
+  background: var(--bg); flex-shrink: 0;
+}
+#chat-input {
+  flex: 1; background: var(--surface); border: 1px solid var(--border);
+  border-radius: 10px; padding: 10px 14px;
+  color: var(--text); font-family: var(--font); font-size: 14px;
+  line-height: 1.55; resize: none; outline: none; max-height: 130px; overflow-y: auto;
+  transition: border-color .2s, box-shadow .2s;
+}
+#chat-input:focus  { border-color: rgba(var(--acc-rgb),.45); box-shadow: 0 0 0 3px rgba(var(--acc-rgb),.09); }
+#chat-input::placeholder { color: var(--text3); }
+#chat-input:disabled { opacity: .45; cursor: not-allowed; }
+#send-btn {
+  width: 37px; height: 37px; flex-shrink: 0; border: none; border-radius: 9px;
+  background: var(--accent); color: #fff;
+  display: flex; align-items: center; justify-content: center;
+  transition: filter .15s, transform .1s, box-shadow .2s;
+  box-shadow: 0 2px 14px rgba(var(--acc-rgb),.32);
+}
+#send-btn:hover   { filter: brightness(1.14); box-shadow: 0 3px 22px rgba(var(--acc-rgb),.50); }
+#send-btn:active  { transform: scale(.94); }
+#send-btn:disabled { opacity:.38; cursor:not-allowed; filter:none; }
+
+/* ─── ORDER SIDEBAR ──────────────────────────────────────────── */
+.sidebar {
+  width: 280px; flex-shrink: 0;
+  border-left: 1px solid var(--border);
+  display: flex; flex-direction: column; overflow: hidden;
+}
+@media (max-width: 680px) { .sidebar { display: none; } }
+.sb-head {
+  height: 48px; flex-shrink: 0; padding: 0 16px;
+  display: flex; align-items: center; gap: 8px;
+  border-bottom: 1px solid var(--border);
+}
+.sb-title { font-size: 13px; font-weight: 600; color: var(--text); }
+.sb-badge {
+  margin-left: auto; font-size: 10px; font-weight: 600;
+  background: var(--surface2); color: var(--text2);
+  padding: 2px 8px; border-radius: 20px;
+}
+.cart-list  { flex: 1; overflow-y: auto; padding: 10px 12px; display: flex; flex-direction: column; gap: 5px; }
+.cart-empty { font-size: 12px; color: var(--text3); text-align: center; padding: 28px 12px; line-height: 1.6; }
+.cart-item  {
+  display: flex; align-items: center; gap: 8px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+  padding: 8px 10px; animation: ci-in .25s ease;
+}
+@keyframes ci-in { from{opacity:0;transform:translateX(9px)} to{opacity:1;transform:none} }
+.ci-name  { flex: 1; font-size: 12px; font-weight: 500; color: var(--text); line-height: 1.35; }
+.ci-qty   { font-size: 11px; font-weight: 600; color: var(--accent); }
+.ci-price { font-size: 12px; color: var(--text2); }
+.sb-foot  { flex-shrink: 0; padding: 12px 14px; border-top: 1px solid var(--border); }
+.total-row {
+  display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 13px;
+}
+.total-lbl { font-size: 12px; color: var(--text2); }
+.total-val { font-size: 22px; font-weight: 700; color: var(--text); }
+#confirm-btn {
+  display: none; width: 100%; padding: 11px; border: none; border-radius: 9px;
+  background: var(--accent); color: #fff;
+  font-size: 13px; font-weight: 600; letter-spacing: .03em;
+  transition: filter .15s, box-shadow .2s;
+  box-shadow: 0 2px 18px rgba(var(--acc-rgb),.32);
+  animation: confirm-glow 2.5s ease infinite;
+}
+@keyframes confirm-glow { 0%,100%{box-shadow:0 2px 16px rgba(var(--acc-rgb),.30)} 50%{box-shadow:0 4px 30px rgba(var(--acc-rgb),.55)} }
+#confirm-btn:hover { filter: brightness(1.12); }
+#confirm-btn.show  { display: block; }
+.done-card {
+  display: none; flex-direction: column; align-items: center;
+  gap: 5px; padding: 20px 12px; text-align: center;
+}
+.done-card.show { display: flex; }
+.done-icon  { font-size: 34px; }
+.done-label { font-size: 14px; font-weight: 600; color: #4ade80; }
+.done-sub   { font-size: 11px; color: var(--text3); }
+</style>
+</head>
+<body>
+<div id="app">
+
+<!-- ══════════════════════════════════════════════════════════
+     SCREEN 1 — RESTAURANT SELECTION
+══════════════════════════════════════════════════════════ -->
+<section id="screen-select" class="screen active">
+  <nav class="nav">
+    <div class="nav-brand"><div class="nav-pulse"></div>Restaurant AI</div>
+    <div style="flex:1"></div>
+    <span class="provider-chip" id="main-provider-chip" style="display:none"></span>
+  </nav>
+  <div class="select-body">
+    <h1>What are you ordering tonight?</h1>
+    <p class="select-sub">Choose a restaurant and let AI handle the rest</p>
+    <div class="r-grid" id="r-grid"></div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════
+     SCREEN 2 — CHAT
+══════════════════════════════════════════════════════════ -->
+<section id="screen-chat" class="screen">
+
+  <nav class="chat-nav">
+    <button class="back-btn" onclick="goBack()" title="Back">&#8592;</button>
+    <span class="cnav-emoji" id="cnav-emoji"></span>
+    <div class="cnav-info">
+      <span class="cnav-name" id="cnav-name"></span>
+      <span class="cnav-sub"  id="cnav-sub"></span>
+    </div>
+    <div class="cnav-space"></div>
+    <div class="stage-track" id="stage-track"></div>
+    <div class="cnav-space"></div>
+    <span class="provider-chip" id="provider-chip" style="display:none"></span>
+    <span class="session-chip" id="session-chip"></span>
+  </nav>
+
+  <div class="chat-body">
+
+    <!-- Messages + input -->
+    <div class="chat-main">
+      <div class="messages" id="messages"></div>
+      <div class="input-area">
+        <textarea id="chat-input" rows="1" placeholder="Message…"
+          onkeydown="handleKey(event)" oninput="autoResize(this)"></textarea>
+        <button id="send-btn" onclick="sendMessage()" title="Send  (Enter)">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+               stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- Order sidebar -->
+    <aside class="sidebar">
+      <div class="sb-head">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2" style="color:var(--text2)">
+          <path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/>
+        </svg>
+        <span class="sb-title">Your Order</span>
+        <span class="sb-badge" id="sb-badge">0 items</span>
+      </div>
+      <div class="cart-list" id="cart-list">
+        <div class="cart-empty">Nothing added yet.<br>Start chatting to build your order.</div>
+      </div>
+      <div class="sb-foot" id="sb-foot" style="display:none">
+        <div class="total-row">
+          <span class="total-lbl">Total</span>
+          <span class="total-val" id="cart-total">$0.00</span>
+        </div>
+        <button id="confirm-btn" onclick="confirmOrder()">Confirm &amp; Place Order</button>
+        <div class="done-card" id="done-card">
+          <div class="done-icon">✅</div>
+          <div class="done-label">Order Placed!</div>
+          <div class="done-sub">Sent to the kitchen</div>
+        </div>
+      </div>
+    </aside>
+
+  </div>
+</section>
+</div><!-- #app -->
+
+<!-- CDN: Marked.js (markdown) + DOMPurify (XSS sanitiser) -->
+<script src="https://cdn.jsdelivr.net/npm/marked@11.1.1/marked.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js"></script>
+<script>
+'use strict';
+
+/* ═══════════════════════════════════════════════════════════
+   DATA
+═══════════════════════════════════════════════════════════ */
+const RESTAURANTS = [
+  {
+    id:1, name:'The Smokehouse', emoji:'🍖', cuisine:'American BBQ · Burgers',
+    tagline:'Slow-smoked perfection since day one',
+    color:'#ff6b35', rgb:'255,107,53',
+    greeting:`Howdy, partner! 🤠 Welcome to **The Smokehouse**.
+
+Our pitmasters have been at it since 5am. Here's what's hot today:
+
+| Item | Price |
+|------|-------|
+| BBQ Ribs Platter | $18.49 |
+| Big Smoke Burger | $12.99 |
+| Crispy Chicken Sando | $11.99 |
+| Loaded Fries | $5.99 |
+
+What can I fire up for you?`,
+  },
+  {
+    id:2, name:'Bella Napoli', emoji:'🍕', cuisine:'Italian · Pizza · Pasta',
+    tagline:'Authentic Neapolitan cuisine, con amore',
+    color:'#ff4757', rgb:'255,71,87',
+    greeting:`*Benvenuti a **Bella Napoli**!* 🍷
+
+So wonderful to have you this evening. Tonight's kitchen is alive with San Marzano tomatoes and fresh basil.
+
+Our recommendations:
+- 🍕 **Margherita Classica** — $13.99 *(San Marzano · fior di latte · basil)*
+- 🍝 **Spaghetti Carbonara** — $14.50 *(guanciale · egg yolk · pecorino)*
+- 🍮 **Tiramisu** — $7.50 *(mascarpone · espresso · ladyfingers)*
+
+What calls to your heart?`,
+  },
+  {
+    id:3, name:'Tokyo Bites', emoji:'🍣', cuisine:'Japanese · Sushi · Ramen',
+    tagline:'Precision. Freshness. Harmony.',
+    color:'#00b4d8', rgb:'0,180,216',
+    greeting:`*Irasshaimase.* 🙏
+
+Welcome to **Tokyo Bites**. Our fish arrived this morning.
+
+> The Tonkotsu broth has simmered for **18 hours**.
+
+Exceptional items tonight:
+
+\`\`\`
+Salmon Sashimi (8pc)  ........  $16.00
+Dragon Roll (8pc)     ........  $17.99
+Tonkotsu Ramen        ........  $16.99
+Edamame               ........   $4.99
+\`\`\`
+
+How may I guide you this evening?`,
+  },
+];
+
+const STAGES      = ['greeting','ordering','confirming','payment','done'];
+const STAGE_NAMES = ['Greeting','Ordering','Confirming','Payment','Done'];
+
+/* ═══════════════════════════════════════════════════════════
+   STATE
+═══════════════════════════════════════════════════════════ */
+const S = {
+  restaurant: null,
+  sessionId:  null,
+  stage:      0,
+  cart:       [],
+  streaming:  false,
+};
+
+/* ═══════════════════════════════════════════════════════════
+   MARKED SETUP
+   Renders during streaming: raw text → final: markdown
+═══════════════════════════════════════════════════════════ */
+marked.setOptions({ breaks:true, gfm:true });
+
+function md(text) {
+  return DOMPurify.sanitize(marked.parse(text || ''));
+}
+
+/* ═══════════════════════════════════════════════════════════
+   INIT — build restaurant cards
+═══════════════════════════════════════════════════════════ */
+document.addEventListener('DOMContentLoaded', () => {
+  // Fetch active LLM provider configuration
+  fetch('/api/v1/chat/config')
+    .then(res => res.json())
+    .then(data => {
+      if (data && data.provider) {
+        const providerText = `Model: ${data.provider}`;
+        const pChip = document.getElementById('provider-chip');
+        const mpChip = document.getElementById('main-provider-chip');
+        if (pChip) {
+          pChip.textContent = providerText;
+          pChip.style.display = 'inline-block';
+        }
+        if (mpChip) {
+          mpChip.textContent = providerText;
+          mpChip.style.display = 'inline-block';
+        }
+      }
+    })
+    .catch(err => console.warn('Failed to load active LLM config', err));
+
+  const grid = document.getElementById('r-grid');
+  RESTAURANTS.forEach((r, i) => {
+    const card = document.createElement('div');
+    card.className = 'r-card';
+    card.innerHTML = `
+      <div class="r-hero" style="background:linear-gradient(145deg,${r.color}1a,${r.color}08)">${r.emoji}</div>
+      <div class="r-body">
+        <div class="r-name">${r.name}</div>
+        <div class="r-cuisine">${r.cuisine}</div>
+        <div class="r-sep"></div>
+        <div class="r-tagline">${r.tagline}</div>
+        <button class="r-btn"
+          style="background:${r.color};box-shadow:0 3px 16px ${r.color}44">
+          Order Now →
+        </button>
+      </div>`;
+    card.addEventListener('click', () => openRestaurant(r));
+    grid.appendChild(card);
+  });
+});
+
+/* ═══════════════════════════════════════════════════════════
+   NAVIGATION
+═══════════════════════════════════════════════════════════ */
+async function openRestaurant(r) {
+  S.restaurant = r;
+  S.sessionId  = crypto.randomUUID().slice(0,8);
+  S.stage      = 0;
+  S.cart       = [];
+  S.streaming  = false;
+
+  // Accent colours
+  document.documentElement.style.setProperty('--accent',  r.color);
+  document.documentElement.style.setProperty('--acc-rgb', r.rgb);
+
+  // Header
+  document.getElementById('cnav-emoji').textContent   = r.emoji;
+  document.getElementById('cnav-name').textContent    = r.name;
+  document.getElementById('cnav-sub').textContent     = r.cuisine;
+  document.getElementById('session-chip').textContent = '#' + S.sessionId;
+
+  // Clear
+  document.getElementById('messages').innerHTML  = '';
+  document.getElementById('chat-input').value    = '';
+  document.getElementById('chat-input').style.height = '';
+  resetCart();
+  renderStages();
+
+  // Switch
+  document.getElementById('screen-select').classList.remove('active');
+  document.getElementById('screen-chat').classList.add('active');
+
+  setTimeout(() => document.getElementById('chat-input').focus(), 80);
+
+  // Greet dynamically from backend AI
+  await streamFromApi("Hello, I'd like to order.");
+}
+
+function goBack() {
+  document.getElementById('screen-chat').classList.remove('active');
+  document.getElementById('screen-select').classList.add('active');
+}
+
+/* ═══════════════════════════════════════════════════════════
+   STAGE PROGRESS
+═══════════════════════════════════════════════════════════ */
+function renderStages() {
+  const track = document.getElementById('stage-track');
+  track.innerHTML = '';
+  STAGES.forEach((s,i) => {
+    const dot  = document.createElement('div');
+    dot.className = 'sdot';
+    dot.title = STAGE_NAMES[i];
+    if (i < S.stage)  dot.classList.add('done');
+    if (i === S.stage) dot.classList.add('active');
+    track.appendChild(dot);
+    if (i < STAGES.length-1) {
+      const line = document.createElement('div');
+      line.className = 'sline' + (i < S.stage ? ' done' : '');
+      track.appendChild(line);
+    }
+  });
+}
+
+function setStage(idx) {
+  if (idx > S.stage && idx < STAGES.length) {
+    S.stage = idx;
+    renderStages();
+    if (S.stage === 2) document.getElementById('confirm-btn').classList.add('show');
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   CART
+═══════════════════════════════════════════════════════════ */
+function resetCart() {
+  document.getElementById('cart-list').innerHTML =
+    '<div class="cart-empty">Nothing added yet.<br>Start chatting to build your order.</div>';
+  document.getElementById('sb-foot').style.display = 'none';
+  document.getElementById('sb-badge').textContent  = '0 items';
+  document.getElementById('cart-total').textContent = '$0.00';
+  document.getElementById('confirm-btn').classList.remove('show');
+  document.getElementById('done-card').classList.remove('show');
+}
+
+function renderCart() {
+  const list = document.getElementById('cart-list');
+  const foot = document.getElementById('sb-foot');
+  const badge = document.getElementById('sb-badge');
+
+  list.innerHTML = '';
+
+  if (!S.cart.length) {
+    list.innerHTML = '<div class="cart-empty">Nothing added yet.<br>Start chatting to build your order.</div>';
+    foot.style.display = 'none';
+    badge.textContent  = '0 items';
+    return;
+  }
+
+  foot.style.display = 'block';
+  let total = 0, count = 0;
+
+  S.cart.forEach(item => {
+    const qty   = item.qty || item.quantity || 1;
+    const price = parseFloat(item.price || item.price_snapshot || 0);
+    total += qty * price; count += qty;
+
+    const row = document.createElement('div');
+    row.className = 'cart-item';
+    row.innerHTML = `
+      <span class="ci-name">${esc(item.name || item.name_snapshot || 'Item')}</span>
+      <span class="ci-qty">×${qty}</span>
+      <span class="ci-price">$${(qty * price).toFixed(2)}</span>`;
+    list.appendChild(row);
+  });
+
+  badge.textContent = `${count} item${count !== 1 ? 's' : ''}`;
+  document.getElementById('cart-total').textContent = `$${total.toFixed(2)}`;
+
+  if (S.stage >= 2) document.getElementById('confirm-btn').classList.add('show');
+}
+
+function pushCartItem(item) {
+  const existing = S.cart.find(c => (c.name||c.name_snapshot) === (item.name||item.name_snapshot));
+  if (existing) { existing.qty = (existing.qty||1) + 1; }
+  else           { S.cart.push({ ...item, qty: item.qty || 1 }); }
+  if (S.stage < 1) setStage(1);
+  renderCart();
+}
+
+/* ═══════════════════════════════════════════════════════════
+   CONFIRM
+═══════════════════════════════════════════════════════════ */
+async function confirmOrder() {
+  document.getElementById('confirm-btn').classList.remove('show');
+  document.getElementById('done-card').classList.add('show');
+  setStage(4);
+
+  try {
+    await fetch('/api/v1/orders/confirm', {
+      method: 'POST',
+      headers: { 'Content-Type':'application/json', 'X-Restaurant-ID': S.restaurant.id.toString() },
+      body: JSON.stringify({ session_id: S.sessionId }),
+    });
+  } catch(_) {}
+}
+
+/* ═══════════════════════════════════════════════════════════
+   MESSAGE RENDERING
+═══════════════════════════════════════════════════════════ */
+function addUserBubble(text) {
+  const msgs = document.getElementById('messages');
+  const w = document.createElement('div');
+  w.className = 'msg user-msg';
+  w.innerHTML = `
+    <div class="msg-body">
+      <div class="msg-meta"><span class="msg-time">${now()}</span></div>
+      <div class="msg-text">${esc(text)}</div>
+    </div>`;
+  msgs.appendChild(w);
+  scrollDown();
+}
+
+function addTypingShell() {
+  const msgs = document.getElementById('messages');
+  const w = document.createElement('div');
+  w.className = 'msg';
+  w.id = '_typing';
+  w.innerHTML = `
+    <div class="msg-avatar">${S.restaurant.emoji}</div>
+    <div class="msg-body">
+      <div class="msg-meta"><span class="msg-name">${S.restaurant.name}</span></div>
+      <div class="typing"><span></span><span></span><span></span></div>
+    </div>`;
+  msgs.appendChild(w);
+  scrollDown();
+  return w;
+}
+
+/** Creates an empty AI message shell, returns the text target element. */
+function createAiShell() {
+  const msgs = document.getElementById('messages');
+  const w = document.createElement('div');
+  w.className = 'msg';
+  w.innerHTML = `
+    <div class="msg-avatar">${S.restaurant.emoji}</div>
+    <div class="msg-body">
+      <div class="msg-meta">
+        <span class="msg-name">${S.restaurant.name}</span>
+        <span class="msg-time">${now()}</span>
+      </div>
+      <div class="msg-text md" id="_stream_target"></div>
+    </div>`;
+  msgs.appendChild(w);
+  return w.querySelector('#_stream_target');
+}
+
+/* ═══════════════════════════════════════════════════════════
+   STREAMING — two paths:
+     streamText()    : local typewriter (greeting + demo fallback)
+     streamFromApi() : real SSE from FastAPI /api/v1/chat/stream
+═══════════════════════════════════════════════════════════ */
+
+/**
+ * Local typewriter stream. Used for the greeting and as
+ * a graceful fallback when the backend is unreachable.
+ */
+async function streamText(text, greeting = false) {
+  S.streaming = true;
+  setUI(false);
+
+  const typing = addTypingShell();
+  await sleep(greeting ? 450 : 550);
+  typing.remove();
+
+  const target = createAiShell();
+  const cursor = mkCursor();
+  let buf = '';
+
+  const delay = greeting ? 13 : 22;
+
+  for (const ch of text) {
+    buf += ch;
+    target.innerHTML = md(buf);
+    const container = target.lastElementChild || target;
+    container.appendChild(cursor);
+    scrollDown();
+    await sleep(ch === '\n' ? 25 : delay);
+  }
+
+  // ── Finalise: replace raw text with rendered markdown ──
+  cursor.remove();
+  finaliseMarkdown(target, buf);
+
+  S.streaming = false;
+  setUI(true);
+  focusInput();
+}
+
+/**
+ * Real SSE streaming from the FastAPI backend.
+ * Falls back to local mock if the request fails.
+ *
+ * Expected SSE events (one per line):
+ *   data: {"token": "..."}           → text token
+ *   data: {"cart": [...]}            → cart update
+ *   data: {"stage": "ordering"}      → stage update
+ *   data: [DONE]                     → stream complete
+ */
+async function streamFromApi(message) {
+  S.streaming = true;
+  setUI(false);
+
+  const typing = addTypingShell();
+  let   target  = null;
+  let   cursor  = null;
+  let   buf     = '';
+  let   first   = true;
+
+  try {
+    const res = await fetch('/api/v1/chat/stream', {
+      method: 'POST',
+      headers: {
+        'Content-Type':    'application/json',
+        'X-Restaurant-ID': String(S.restaurant.id),
+      },
+      body: JSON.stringify({ message, session_id: S.sessionId }),
+    });
+
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+    const reader  = res.body.getReader();
+    const decoder = new TextDecoder();
+    let   chunk   = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      chunk += decoder.decode(value, { stream: true });
+      const lines = chunk.split('\n');
+      chunk = lines.pop(); // keep partial line
+
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        const payload = line.slice(6).trim();
+        if (payload === '[DONE]') break;
+
+        let p;
+        try { p = JSON.parse(payload); } catch { continue; }
+
+        // ── Token ──
+        if (p.token) {
+          if (first) { typing.remove(); target = createAiShell(); cursor = mkCursor(); first = false; }
+          buf += p.token;
+          target.innerHTML = md(buf);
+          const container = target.lastElementChild || target;
+          container.appendChild(cursor);
+          scrollDown();
+        }
+
+        // ── Cart update (emitted after tool calls complete) ──
+        if (p.cart)  { S.cart = p.cart; renderCart(); }
+
+        // ── Stage update ──
+        if (p.stage) {
+          const idx = STAGES.indexOf(p.stage);
+          if (idx > S.stage) setStage(idx);
+        }
+      }
+    }
+
+    // ── Finalise ──
+    if (target) { cursor?.remove(); finaliseMarkdown(target, buf); }
+    else        { typing.remove(); }          // no tokens came through
+
+  } catch (_) {
+    // Backend not available — fall through to mock
+    typing.remove();
+    const isInitial = (message === "Hello, I'd like to order.");
+    const respText = isInitial ? S.restaurant.greeting : getMock(message).text;
+    await streamText(respText);
+    if (!isInitial) {
+      const resp = getMock(message);
+      if (resp.item)    pushCartItem(resp.item);
+      if (resp.stageUp) setStage(S.stage + 1);
+    }
+    return;
+  }
+
+  S.streaming = false;
+  setUI(true);
+  focusInput();
+}
+
+/**
+ * Replace raw streamed text with rendered, sanitised markdown.
+ * Fades in so the swap isn't jarring.
+ */
+function finaliseMarkdown(el, text) {
+  el.className     = 'msg-text md';
+  el.innerHTML     = md(text);
+  scrollDown();
+}
+
+/* ═══════════════════════════════════════════════════════════
+   SEND
+═══════════════════════════════════════════════════════════ */
+async function sendMessage() {
+  const inp  = document.getElementById('chat-input');
+  const text = inp.value.trim();
+  if (!text || S.streaming) return;
+
+  inp.value = '';
+  autoResize(inp);
+  addUserBubble(text);
+  await streamFromApi(text);
+}
+
+function handleKey(e) {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   MOCK RESPONSES (demo mode — when backend is unreachable)
+═══════════════════════════════════════════════════════════ */
+const MOCK = {
+  1: [
+    { re:/ribs|bbq|smok/i,
+      text:`**Excellent taste, partner!** 🔥\n\nThe **BBQ Ribs Platter** is going on your order:\n\n> *12 hours over hickory — falling off the bone*\n\nWant to add **Loaded Fries** ($5.99)? Cheese, bacon, jalapeños — the full deal.`,
+      item:{ name:'BBQ Ribs Platter', price:18.49 } },
+    { re:/burger|big smoke/i,
+      text:`The **Big Smoke Burger** — double beef patty, cheddar, house sauce. A legend. 🍔\n\nAdded to your order. Want **Onion Rings** ($4.49) on the side?`,
+      item:{ name:'Big Smoke Burger', price:12.99 } },
+    { re:/fries|loaded|side|yes|sure|yeah/i,
+      text:`Loaded Fries — done! 🍟\n\nYour order so far:\n- BBQ Ribs Platter\n- Loaded Fries\n\nAnything to drink? Our **Chocolate Milkshake** ($5.49) is hand-spun perfection.`,
+      item:{ name:'Loaded Fries', price:5.99 } },
+    { re:/milk|shake|drink|coke/i,
+      text:`Milkshake added! 🥤\n\nYou're all set, partner. Ready to **confirm your order**?`,
+      item:{ name:'Chocolate Milkshake', price:5.49 }, stageUp:true },
+    { re:/confirm|place|done/i,
+      text:`Your order is **confirmed** and heading to the kitchen RIGHT NOW! 🎉\n\nThanks for choosing The Smokehouse. Enjoy the feast!`, stageUp:true },
+  ],
+  2: [
+    { re:/pizza|margherita/i,
+      text:`Magnifico! 🍕\n\n**Margherita Classica** — going on your order.\n\n*San Marzano · Fior di latte · Fresh basil*\n\nShall I also add **Spaghetti Carbonara** ($14.50)?`,
+      item:{ name:'Margherita Classica', price:13.99 } },
+    { re:/carbonara|pasta|yes|sure/i,
+      text:`The Carbonara — our 30-year family recipe. ✨\n\n\`\`\`\nGuanciale · Egg yolk · Pecorino · Black pepper\n\`\`\`\n\nShall we finish with a **Tiramisu** ($7.50)?`,
+      item:{ name:'Spaghetti Carbonara', price:14.50 } },
+    { re:/tiramisu|dessert/i,
+      text:`*Perfetto!* Tiramisu added. 🍰\n\nReady to place your order?`,
+      item:{ name:'Tiramisu', price:7.50 }, stageUp:true },
+    { re:/confirm|place|order/i,
+      text:`**Perfetto!** 🇮🇹 Your order is confirmed.\n\n*Grazie mille — Buon appetito!* 🌹`, stageUp:true },
+  ],
+  3: [
+    { re:/salmon|sashimi|sushi/i,
+      text:`An excellent selection. 🐟\n\n**Salmon Sashimi (8pc)** — noted.\n\n| Detail | Info |\n|--------|------|\n| Origin | Market-fresh today |\n| Served with | Wasabi, ginger |\n| Price | $16.00 |\n\nThe **Dragon Roll** ($17.99) pairs beautifully.`,
+      item:{ name:'Salmon Sashimi (8pc)', price:16.00 } },
+    { re:/dragon|roll|yes|sure/i,
+      text:`Dragon Roll — added. 🎌\n\n*Prawn tempura · Avocado · Tobiko*\n\nMay I suggest the **Tonkotsu Ramen** ($16.99)? The broth has simmered for \`18 hours\`.`,
+      item:{ name:'Dragon Roll (8pc)', price:17.99 } },
+    { re:/ramen|tonkotsu|yes|broth/i,
+      text:`The Tonkotsu. A worthy choice. 🍜\n\nYour selection reflects excellent taste. Shall I finalize?`,
+      item:{ name:'Tonkotsu Ramen', price:16.99 }, stageUp:true },
+    { re:/confirm|place|finalize/i,
+      text:`**Your order is placed.** 🙇\n\nWe are honoured to prepare this.\n\n*Arigatou gozaimasu.* ✨`, stageUp:true },
+  ],
+};
+
+function getMock(text) {
+  const bank = MOCK[S.restaurant?.id] || [];
+  for (const r of bank) if (r.re.test(text)) return r;
+  return { text:"I'd be happy to help! Could you tell me a bit more?" };
+}
+
+/* ═══════════════════════════════════════════════════════════
+   UTILS
+═══════════════════════════════════════════════════════════ */
+const mkCursor = () => Object.assign(document.createElement('span'), { className:'cur' });
+
+function setUI(enabled) {
+  document.getElementById('chat-input').disabled = !enabled;
+  document.getElementById('send-btn').disabled   = !enabled;
+}
+
+function focusInput() {
+  setTimeout(() => document.getElementById('chat-input').focus(), 50);
+}
+
+function autoResize(el) {
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight, 130) + 'px';
+}
+
+function scrollDown() {
+  const m = document.getElementById('messages');
+  m.scrollTop = m.scrollHeight;
+}
+
+const now = () => new Date().toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' });
+
+function esc(s) {
+  return String(s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+</script>
+</body>
+</html>
