@@ -1,11 +1,98 @@
-# Python-generated files
+# Byte-compiled / optimized / DLL files
 __pycache__/
-*.py[oc]
+*.py[cod]
+*.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
 build/
 dist/
+eggs/
+*.egg-info/
+pip-wheel-metadata/
 wheels/
-*.egg-info
 
-# Virtual environments
-.venv
-*log
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+
+# Translations
+*.mo
+*.pot
+
+# Django stuff:
+*.log
+local_settings.py
+db.sqlite3
+db.sqlite3-journal
+
+# Flask/Django env files
+.env
+.env.*
+env/
+venv/
+venv.bak/
+.venv/
+
+# PyCharm
+.idea/
+
+# VS Code
+.vscode/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# SSH keys, certs and PEM files
+*.pem
+*.key
+
+# Logs
+*.log
+
+# Redis dump
+*.rdb
+
+# Docker
+.Dockerfile.swp
+docker-compose.override.yml
+
+# Editor temp files
+*~
+*.swp
+*#
+
+# Notebook checkpoints
+.ipynb_checkpoints/
+
+# Build output of pyinstaller
+/dist/
+
+# Sphinx build
+docs/_build/
+
+# Misc
+.secret
+.secrets/
+
+# Ignore coverage reports and htmlcov
+htmlcov/
+
+# Ignore compiled wheel artifacts
+*.whl
