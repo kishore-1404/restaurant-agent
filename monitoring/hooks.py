@@ -272,10 +272,33 @@ class MonitorCallback(BaseCallbackHandler):
         rid = str(run_id)
         self._llm_start[rid] = time.perf_counter()
         model = "unknown-model"
+        
+        # 1. Try to extract from serialized kwargs
         if serialized and isinstance(serialized, dict):
             kwargs_dict = serialized.get("kwargs")
             if isinstance(kwargs_dict, dict):
-                model = kwargs_dict.get("model", "unknown-model")
+                model = kwargs_dict.get("model") or kwargs_dict.get("model_name") or "unknown-model"
+                
+        # 2. Try to extract from invocation_params in kwargs
+        if model == "unknown-model":
+            invocation_params = kwargs.get("invocation_params")
+            if invocation_params and isinstance(invocation_params, dict):
+                model = invocation_params.get("model_name") or invocation_params.get("model") or "unknown-model"
+                
+        # 3. Fallback to settings
+        if model == "unknown-model":
+            try:
+                from config import settings
+                provider = settings.llm_provider.lower()
+                if provider == "llamacpp":
+                    model = settings.llamacpp_model_name
+                elif provider == "gemini":
+                    model = settings.gemini_model_name
+                elif provider == "ollama":
+                    model = settings.ollama_model_name
+            except Exception:
+                pass
+                
         token_estimate = sum(len(p) // 4 for p in prompts)  # ~4 chars/token
         bus.emit(Event(
             kind=EK.LLM,
@@ -284,7 +307,7 @@ class MonitorCallback(BaseCallbackHandler):
             detail={
                 "model":           model,
                 "prompt_tokens":   token_estimate,
-                "prompt_preview":  (prompts[0] if prompts else "")[:300],
+                "prompt_preview":  prompts[0] if prompts else "",
             },
         ))
 
@@ -296,18 +319,27 @@ class MonitorCallback(BaseCallbackHandler):
         # Extract token usage if the provider returns it
         usage = {}
         try:
-            gen = response.generations[0][0]
-            msg = getattr(gen, "message", None)
-            usage = getattr(msg, "usage_metadata", {}) or {}
+            # Try response.llm_output (standard for LangChain LLMResult)
+            if hasattr(response, "llm_output") and response.llm_output:
+                usage = response.llm_output.get("token_usage") or {}
+            
+            # Try generations message response_metadata or usage_metadata
+            if not usage and hasattr(response, "generations") and response.generations:
+                gen = response.generations[0][0]
+                msg = getattr(gen, "message", None)
+                if msg:
+                    usage = getattr(msg, "usage_metadata", {}) or {}
+                    if not usage and hasattr(msg, "response_metadata") and msg.response_metadata:
+                        usage = msg.response_metadata.get("token_usage") or {}
         except Exception:
             pass
 
-        in_t  = usage.get("input_tokens", "?")
-        out_t = usage.get("output_tokens", "?")
+        in_t  = usage.get("prompt_tokens") or usage.get("input_tokens") or "?"
+        out_t = usage.get("completion_tokens") or usage.get("output_tokens") or "?"
 
         text_preview = ""
         try:
-            text_preview = response.generations[0][0].text[:300]
+            text_preview = response.generations[0][0].text
         except Exception:
             pass
 
@@ -406,7 +438,7 @@ class MonitorCallback(BaseCallbackHandler):
             kind=EK.AGENT,
             title=f"▶ {name}",
             session_id=self.session_id,
-            detail={"chain": name, "inputs": _safe_truncate(inputs)},
+            detail={"chain": name, "inputs": _to_json_compatible(inputs)},
         ))
 
     def on_chain_end(self, outputs: dict, *, run_id=None, **kwargs):
@@ -438,7 +470,7 @@ def emit_agent_state(state: dict, session_id: str, node_name: str = "") -> None:
             "stage":     stage,
             "cart":      state.get("cart", []),
             "order_id":  state.get("order_id"),
-            "full_state": _safe_truncate(state, max_len=2000),
+            "full_state": _to_json_compatible(state),
         },
     ))
 
@@ -456,13 +488,103 @@ def emit_order_event(action: str, order_id: int, session_id: str, detail: dict =
     ))
 
 
+def emit_allergen_event(item_name: str, allergens_found: list[str], session_id: str):
+    bus.emit(Event(
+        kind=EK.ALLERGEN,
+        title=f"{item_name} — flagged: {', '.join(allergens_found)}",
+        session_id=session_id,
+        detail={"item": item_name, "allergens": allergens_found},
+        is_error=False,
+    ))
+
+
+def emit_profile_loaded(profile_name: str, session_id: str, has_restrictions: bool):
+    bus.emit(Event(
+        kind=EK.PROFILE,
+        title=f"Profile loaded: {profile_name}  {'⚠ has restrictions' if has_restrictions else ''}",
+        session_id=session_id,
+        detail={"name": profile_name, "has_restrictions": has_restrictions},
+    ))
+
+
+def emit_price_rule(rule_label: str, item: str, original: float, final: float, session_id: str):
+    pct = round((1 - final/original) * 100) if original > 0 else 0
+    bus.emit(Event(
+        kind=EK.PRICING,
+        title=f"{rule_label} applied to {item} — {pct}% off",
+        session_id=session_id,
+        detail={"rule": rule_label, "item": item, "original": original, "final": final},
+    ))
+
+
+def emit_upsell(suggested_item: str, anchor_item: str, lift_score: float, session_id: str):
+    bus.emit(Event(
+        kind=EK.UPSELL,
+        title=f"Suggested {suggested_item} with {anchor_item} (lift: {lift_score:.2f})",
+        session_id=session_id,
+        detail={"suggestion": suggested_item, "anchor": anchor_item, "lift": lift_score},
+    ))
+
+
+def emit_rule_violation(rule_label: str, session_id: str, detail: dict = None):
+    bus.emit(Event(
+        kind=EK.RULE,
+        title=f"Rule hit: {rule_label}",
+        session_id=session_id,
+        detail=detail or {},
+    ))
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # HELPERS
 # ─────────────────────────────────────────────────────────────────────────────
 
+def _to_json_compatible(obj: Any) -> Any:
+    if isinstance(obj, dict):
+        return {k: _to_json_compatible(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_to_json_compatible(v) for v in obj]
+    if isinstance(obj, (set, tuple)):
+        return [_to_json_compatible(v) for v in list(obj)]
+    
+    from decimal import Decimal
+    if isinstance(obj, Decimal):
+        return float(obj)
+        
+    from datetime import datetime, date
+    if isinstance(obj, (datetime, date)):
+        return obj.isoformat()
+        
+    try:
+        from langchain_core.messages import BaseMessage
+        if isinstance(obj, BaseMessage):
+            return {
+                "type": obj.type,
+                "content": obj.content,
+                "additional_kwargs": obj.additional_kwargs,
+                "response_metadata": obj.response_metadata,
+                "name": obj.name,
+                "id": obj.id,
+            }
+    except ImportError:
+        pass
+
+    if hasattr(obj, "dict") and callable(obj.dict):
+        try:
+            return _to_json_compatible(obj.dict())
+        except Exception:
+            pass
+            
+    try:
+        json.dumps(obj)
+        return obj
+    except Exception:
+        return str(obj)
+
+
 def _safe_truncate(obj: Any, max_len: int = 500) -> str:
     try:
-        s = json.dumps(obj, default=str)
+        s = json.dumps(_to_json_compatible(obj))
         return s if len(s) <= max_len else s[:max_len] + "…"
     except Exception:
         return str(obj)[:max_len]

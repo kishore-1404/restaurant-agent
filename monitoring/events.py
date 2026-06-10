@@ -25,24 +25,34 @@ from typing import Any, Callable
 # ─────────────────────────────────────────────────────────────────────────────
 
 class EK(str, Enum):
-    LLM   = "llm"
-    TOOL  = "tool"
-    DB    = "db"
-    REDIS = "redis"
-    AGENT = "agent"
-    ORDER = "order"
-    ERROR = "error"
+    LLM      = "llm"
+    TOOL     = "tool"
+    DB       = "db"
+    REDIS    = "redis"
+    AGENT    = "agent"
+    ORDER    = "order"
+    ERROR    = "error"
+    ALLERGEN = "allergen"
+    PROFILE  = "profile"
+    PRICING  = "pricing"
+    UPSELL   = "upsell"
+    RULE     = "rule"
 
 
 # Visual config — one place to change colours / icons for every consumer
 _KIND_META: dict[EK, dict] = {
-    EK.LLM:   {"color": "#42a5f5", "label": "🤖 LLM",   "dark": "#1565c0"},
-    EK.TOOL:  {"color": "#66bb6a", "label": "🔧 TOOL",  "dark": "#2e7d32"},
-    EK.DB:    {"color": "#ffa726", "label": "🗄  DB",    "dark": "#e65100"},
-    EK.REDIS: {"color": "#ab47bc", "label": "⚡ REDIS",  "dark": "#6a1b9a"},
-    EK.AGENT: {"color": "#26c6da", "label": "🌐 AGENT",  "dark": "#00838f"},
-    EK.ORDER: {"color": "#26a69a", "label": "🧾 ORDER",  "dark": "#00695c"},
-    EK.ERROR: {"color": "#ef5350", "label": "❌ ERROR",  "dark": "#b71c1c"},
+    EK.LLM:      {"color": "#42a5f5", "label": "🤖 LLM",      "dark": "#1565c0"},
+    EK.TOOL:     {"color": "#66bb6a", "label": "🔧 TOOL",     "dark": "#2e7d32"},
+    EK.DB:       {"color": "#ffa726", "label": "🗄  DB",       "dark": "#e65100"},
+    EK.REDIS:    {"color": "#ab47bc", "label": "⚡ REDIS",     "dark": "#6a1b9a"},
+    EK.AGENT:    {"color": "#26c6da", "label": "🌐 AGENT",     "dark": "#00838f"},
+    EK.ORDER:    {"color": "#26a69a", "label": "🧾 ORDER",     "dark": "#00695c"},
+    EK.ERROR:    {"color": "#ef5350", "label": "❌ ERROR",     "dark": "#b71c1c"},
+    EK.ALLERGEN: {"color": "#ef5350", "label": "⚠️ ALLERGEN",  "dark": "#b71c1c"},
+    EK.PROFILE:  {"color": "#2979ff", "label": "👤 PROFILE",   "dark": "#2962ff"},
+    EK.PRICING:  {"color": "#00e676", "label": "🏷️ PRICING",   "dark": "#00c853"},
+    EK.UPSELL:   {"color": "#ffea00", "label": "🍿 UPSELL",    "dark": "#ffd600"},
+    EK.RULE:     {"color": "#ff9100", "label": "📏 RULE",      "dark": "#ff6d00"},
 }
 
 

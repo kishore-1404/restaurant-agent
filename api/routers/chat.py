@@ -11,7 +11,9 @@ router = APIRouter()
 
 class ChatRequest(BaseModel):
     message: str
-    session_id: str = None
+    session_id: str | None = None
+    customer_phone: str | None = None
+    language_code: str | None = None
 
 
 @router.post("/stream")
@@ -52,17 +54,26 @@ async def chat_stream(request: ChatRequest, context=Depends(get_db_and_restauran
                 "messages": [{"role": "user", "content": request.message}],
                 "restaurant_id": restaurant.id,
                 "session_id": session_id,
+                "language_code": request.language_code or "en",
+                "customer_phone": request.customer_phone,
                 "customer_name": None,
+                "customer_profile": None,
                 "cart": [],
                 "order_id": order.id,
                 "stage": "greeting",
                 "menu_text": menu_text,
+                "active_promotions": [],
+                "order_rules": [],
+                "allergen_warnings_shown": [],
+                "upsells_shown": [],
                 "error_message": None,
             }
         else:
             inputs = {
                 "messages": [{"role": "user", "content": request.message}],
             }
+            if request.customer_phone:
+                inputs["customer_phone"] = request.customer_phone
 
         async for event in graph.astream_events(inputs, config=config, version="v2"):
             if event["event"] == "on_chat_model_stream":
@@ -77,7 +88,21 @@ async def chat_stream(request: ChatRequest, context=Depends(get_db_and_restauran
         result = state_snapshot.values
         cart = result.get("cart", [])
         stage = result.get("stage", "greeting")
-        yield f"data: {json.dumps({'cart': cart, 'stage': stage})}\n\n"
+        customer_name = result.get("customer_name")
+        customer_phone = result.get("customer_phone")
+        customer_profile = result.get("customer_profile")
+        active_promotions = result.get("active_promotions")
+        order_rules = result.get("order_rules")
+
+        yield f"data: {json.dumps({
+            'cart': cart,
+            'stage': stage,
+            'customer_name': customer_name,
+            'customer_phone': customer_phone,
+            'customer_profile': customer_profile,
+            'active_promotions': active_promotions,
+            'order_rules': order_rules,
+        })}\n\n"
 
         yield "data: [DONE]\n\n"
 

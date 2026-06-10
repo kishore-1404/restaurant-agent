@@ -19,7 +19,16 @@ async def get_db_and_restaurant(
     # Retrieve restaurant metadata
     restaurant = await RestaurantService.get_by_id(db, restaurant_id)
     if not restaurant:
-        raise HTTPException(status_code=404, detail=f"Restaurant with ID {restaurant_id} not found or inactive.")
+        # Fallback to the first active restaurant if the default ID is not found in the DB
+        active_restaurants = await RestaurantService.list_active(db)
+        if active_restaurants:
+            restaurant = active_restaurants[0]
+            restaurant_id = restaurant.id
+        else:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Restaurant with ID {restaurant_id} not found or inactive, and no other active restaurants are available."
+            )
 
     # Set the PostgreSQL session variable for Row-Level Security
     await RestaurantService.set_tenant_context(db, restaurant.id)

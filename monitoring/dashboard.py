@@ -42,7 +42,6 @@ _DARK_BG = "#0f1117"
 _CARD_BG = "#1a1d27"
 _BORDER = "#2a2d3e"
 _MONO = "font-family: 'JetBrains Mono', 'Fira Code', monospace; font-size: 12px;"
-
 # Maps EK → Quasar color name  (used for badges, chips, borders)
 _Q_COLOR: dict[EK, str] = {
     EK.LLM: "blue",
@@ -52,6 +51,11 @@ _Q_COLOR: dict[EK, str] = {
     EK.AGENT: "cyan",
     EK.ORDER: "teal",
     EK.ERROR: "red",
+    EK.ALLERGEN: "red",
+    EK.PROFILE: "indigo",
+    EK.PRICING: "light-green",
+    EK.UPSELL: "orange",
+    EK.RULE: "deep-orange",
 }
 
 _ICON: dict[EK, str] = {
@@ -62,9 +66,12 @@ _ICON: dict[EK, str] = {
     EK.AGENT: "account_tree",
     EK.ORDER: "receipt_long",
     EK.ERROR: "error_outline",
+    EK.ALLERGEN: "warning",
+    EK.PROFILE: "person",
+    EK.PRICING: "sell",
+    EK.UPSELL: "shopping_cart",
+    EK.RULE: "gavel",
 }
-
-
 # ─────────────────────────────────────────────────────────────────────────────
 # HELPERS
 # ─────────────────────────────────────────────────────────────────────────────
@@ -97,7 +104,7 @@ def _detail_expansion(event: Event):
         return
     with ui.expansion("Details", icon="expand_more").classes("w-full"):
         ui.code(json.dumps(event.detail, indent=2, default=str)).classes("w-full text-xs").style(
-            "background:#0d1117; border-radius:6px;"
+            "background:#0d1117; border-radius:6px; max-height:350px; overflow:auto; white-space:pre;"
         )
 
 
@@ -312,12 +319,18 @@ def _tab_llm() -> dict:
 
     ui.separator().style("margin:12px 0;")
     ui.label("Click a row to see prompt / response preview").style("color:#6272a4; font-size:12px;")
-    detail_box = ui.code("").classes("w-full").style("background:#0d1117; min-height:80px;")
+    detail_box = (
+        ui.json_editor(properties={"content": {"json": {}}, "readOnly": True})
+        .classes("w-full")
+        .style("min-height:350px;")
+    )
 
     def on_row_click(e):
         try:
             row = e.args[1] if len(e.args) > 1 else {}
-            detail_box.set_content(json.dumps(json.loads(row.get("_detail", "{}")), indent=2))
+            detail_data = json.loads(row.get("_detail", "{}"))
+            detail_box.properties["content"] = {"json": detail_data}
+            detail_box.update()
         except Exception:
             pass
 
@@ -541,9 +554,9 @@ def _tab_agent() -> dict:
         .style("margin-top:12px;")
     ):
         state_code = (
-            ui.code("{}")
+            ui.json_editor(properties={"content": {"json": {}}, "readOnly": True})
             .classes("w-full")
-            .style("background:#0d1117; min-height:200px; border-radius:8px;")
+            .style("min-height:450px;")
         )
 
     def load_session(session_id: str | None):
@@ -555,7 +568,8 @@ def _tab_agent() -> dict:
             with cart_container:
                 cart_container.clear()
                 ui.label("No active session.").style("color:#6272a4; font-size:12px; padding:12px;")
-            state_code.set_content("{}")
+            state_code.properties["content"] = {"json": {}}
+            state_code.update()
             return
 
         events = [e for e in bus.by_session(session_id) if e.kind == EK.AGENT]
@@ -569,7 +583,8 @@ def _tab_agent() -> dict:
                 ui.label("No agent state events captured for this session yet.").style(
                     "color:#6272a4; font-size:12px; padding:12px;"
                 )
-            state_code.set_content('{"message": "No agent state captured yet."}')
+            state_code.properties["content"] = {"json": {"message": "No agent state captured yet."}}
+            state_code.update()
             return
 
         # Get latest agent state
@@ -651,7 +666,8 @@ def _tab_agent() -> dict:
                 )
 
         # Update JSON code block
-        state_code.set_content(json.dumps(state_dict, indent=2, default=str))
+        state_code.properties["content"] = {"json": state_dict}
+        state_code.update()
 
     session_select.on_value_change(lambda e: load_session(e.value))
 
@@ -676,6 +692,54 @@ def _tab_errors() -> dict:
         for ev in reversed(errors[-100:]):
             _event_card(ev, err_col)
     return {"err_col": err_col, "no_errors_label": no_errors_label}
+
+
+def _tab_allergens() -> dict:
+    """Allergen checks and warnings."""
+    rows = [
+        {
+            "ts": e.ts.strftime("%H:%M:%S"),
+            "item": e.detail.get("item", e.title),
+            "allergens": ", ".join(e.detail.get("allergens", [])),
+            "session": e.session_short,
+        }
+        for e in reversed(bus.by_kind(EK.ALLERGEN))
+    ]
+    cols = [
+        {"name": "ts", "label": "Time", "field": "ts", "align": "left"},
+        {"name": "item", "label": "Item Name", "field": "item", "align": "left"},
+        {"name": "allergens", "label": "Flagged Allergens", "field": "allergens", "align": "left"},
+        {"name": "session", "label": "Session", "field": "session", "align": "left"},
+    ]
+    tbl = ui.table(columns=cols, rows=rows, row_key="ts").classes("w-full").props("dense flat")
+    return {"tbl": tbl}
+
+
+def _tab_pricing() -> dict:
+    """Applied pricing rules and discounts."""
+    rows = [
+        {
+            "ts": e.ts.strftime("%H:%M:%S"),
+            "item": e.detail.get("item", ""),
+            "rule": e.detail.get("rule", ""),
+            "original": f"${e.detail.get('original', 0.0):.2f}",
+            "final": f"${e.detail.get('final', 0.0):.2f}",
+            "discount": f"{round((1 - e.detail.get('final', 0.0)/e.detail.get('original', 1.0)) * 100)}%" if e.detail.get('original', 0.0) > 0 else "0%",
+            "session": e.session_short,
+        }
+        for e in reversed(bus.by_kind(EK.PRICING))
+    ]
+    cols = [
+        {"name": "ts", "label": "Time", "field": "ts", "align": "left"},
+        {"name": "item", "label": "Item Name", "field": "item", "align": "left"},
+        {"name": "rule", "label": "Rule Label", "field": "rule", "align": "left"},
+        {"name": "original", "label": "Original Price", "field": "original", "align": "right"},
+        {"name": "final", "label": "Final Price", "field": "final", "align": "right"},
+        {"name": "discount", "label": "Discount (%)", "field": "discount", "align": "right"},
+        {"name": "session", "label": "Session", "field": "session", "align": "left"},
+    ]
+    tbl = ui.table(columns=cols, rows=rows, row_key="ts").classes("w-full").props("dense flat")
+    return {"tbl": tbl}
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -789,6 +853,8 @@ def _build_page():
                 ("tools", "Tools", "build"),
                 ("agent", "Agent", "account_tree"),
                 ("errors", "Errors", "error_outline"),
+                ("allergens", "Allergens", "warning"),
+                ("pricing", "Pricing", "sell"),
             ]:
                 with ui.tab(name, label=label, icon=icon_name).props("no-caps"):
                     pass
@@ -810,6 +876,10 @@ def _build_page():
                 agent_refs = _tab_agent()
             with ui.tab_panel("errors"):
                 err_refs = _tab_errors()
+            with ui.tab_panel("allergens"):
+                allergens_refs = _tab_allergens()
+            with ui.tab_panel("pricing"):
+                pricing_refs = _tab_pricing()
 
     # ── Helper: select session filter ──
     def select_session_filter(sid: str | None):
@@ -1015,6 +1085,37 @@ def _build_page():
             if "no_errors_label" in err_refs:
                 err_refs["no_errors_label"].set_visibility(len(error_events) == 0)
 
+        # 8. Allergens Tab: Re-populate rows
+        if "tbl" in allergens_refs:
+            allergen_events = [e for e in events if e.kind == EK.ALLERGEN]
+            allergens_refs["tbl"].rows = [
+                {
+                    "ts": e.ts.strftime("%H:%M:%S"),
+                    "item": e.detail.get("item", e.title),
+                    "allergens": ", ".join(e.detail.get("allergens", [])),
+                    "session": e.session_short,
+                }
+                for e in reversed(allergen_events)
+            ]
+            allergens_refs["tbl"].update()
+
+        # 9. Pricing Tab: Re-populate rows
+        if "tbl" in pricing_refs:
+            pricing_events = [e for e in events if e.kind == EK.PRICING]
+            pricing_refs["tbl"].rows = [
+                {
+                    "ts": e.ts.strftime("%H:%M:%S"),
+                    "item": e.detail.get("item", ""),
+                    "rule": e.detail.get("rule", ""),
+                    "original": f"${e.detail.get('original', 0.0):.2f}",
+                    "final": f"${e.detail.get('final', 0.0):.2f}",
+                    "discount": f"{round((1 - e.detail.get('final', 0.0)/e.detail.get('original', 1.0)) * 100)}%" if e.detail.get('original', 0.0) > 0 else "0%",
+                    "session": e.session_short,
+                }
+                for e in reversed(pricing_events)
+            ]
+            pricing_refs["tbl"].update()
+
         # 7. Update metric strip and sidebar sessions list
         render_sidebar_sessions()
         update_metrics()
@@ -1118,6 +1219,29 @@ def _build_page():
                 }
                 tool_refs["tbl"].rows.insert(0, new_row)
                 tool_refs["tbl"].update()
+
+            elif ev.kind == EK.ALLERGEN and "tbl" in allergens_refs:
+                new_row = {
+                    "ts": ev.ts.strftime("%H:%M:%S"),
+                    "item": ev.detail.get("item", ev.title),
+                    "allergens": ", ".join(ev.detail.get("allergens", [])),
+                    "session": ev.session_short,
+                }
+                allergens_refs["tbl"].rows.insert(0, new_row)
+                allergens_refs["tbl"].update()
+
+            elif ev.kind == EK.PRICING and "tbl" in pricing_refs:
+                new_row = {
+                    "ts": ev.ts.strftime("%H:%M:%S"),
+                    "item": ev.detail.get("item", ""),
+                    "rule": ev.detail.get("rule", ""),
+                    "original": f"${ev.detail.get('original', 0.0):.2f}",
+                    "final": f"${ev.detail.get('final', 0.0):.2f}",
+                    "discount": f"{round((1 - ev.detail.get('final', 0.0)/ev.detail.get('original', 1.0)) * 100)}%" if ev.detail.get('original', 0.0) > 0 else "0%",
+                    "session": ev.session_short,
+                }
+                pricing_refs["tbl"].rows.insert(0, new_row)
+                pricing_refs["tbl"].update()
 
             elif ev.kind == EK.AGENT and "select" in agent_refs:
                 # If this is the currently selected session in the dropdown, update the entire view

@@ -3,33 +3,38 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Restaurant AI</title>
+<title>Restaurant AI - Premium Multi-Tenant Ordering Kiosk</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Inter:ital,wght@0,400;0,500;0,600;0,700;1,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 /* ─── VARIABLES ─────────────────────────────────────────────── */
 :root {
-  --bg:       #0d0f14;
-  --surface:  #161a22;
-  --surface2: #1d2330;
-  --border:   rgba(255,255,255,0.07);
-  --border2:  rgba(255,255,255,0.13);
-  --text:     #dde3ed;
-  --text2:    #8892a4;
-  --text3:    #404b5e;
+  --bg:       #080a10;
+  --surface:  rgba(22, 26, 38, 0.7);
+  --surface2: rgba(29, 35, 48, 0.9);
+  --border:   rgba(255, 255, 255, 0.06);
+  --border2:  rgba(255, 255, 255, 0.12);
+  --text:     #f1f5f9;
+  --text2:    #94a3b8;
+  --text3:    #475569;
   --accent:   #6366f1;
   --acc-rgb:  99,102,241;
-  --r:        10px;
-  --font:     'Inter', -apple-system, sans-serif;
+  --danger:   #ef4444;
+  --success:  #22c55e;
+  --warning:  #f59e0b;
+  --r:        12px;
+  --font:     'Outfit', -apple-system, sans-serif;
   --mono:     'JetBrains Mono', 'Fira Code', monospace;
 }
+
 /* ─── RESET ─────────────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 html, body { height: 100%; font-family: var(--font); font-size: 15px;
   background: var(--bg); color: var(--text); -webkit-font-smoothing: antialiased; }
-#app { height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
-::-webkit-scrollbar { width: 3px; }
-::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.11); border-radius: 2px; }
+#app { height: 100vh; display: flex; flex-direction: column; overflow: hidden; background: radial-gradient(circle at 50% 50%, #0d1222 0%, #06080e 100%); }
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.15); }
 button { font-family: var(--font); cursor: pointer; }
 
 /* ─── SCREENS ────────────────────────────────────────────────── */
@@ -38,21 +43,64 @@ button { font-family: var(--font); cursor: pointer; }
 
 /* ─── TOP NAV ────────────────────────────────────────────────── */
 .nav {
-  height: 52px; flex-shrink: 0;
+  height: 60px; flex-shrink: 0;
   display: flex; align-items: center; padding: 0 24px;
   border-bottom: 1px solid var(--border);
-  background: var(--bg);
+  background: rgba(8, 10, 16, 0.85);
+  backdrop-filter: blur(10px);
+  z-index: 100;
 }
 .nav-brand {
-  font-size: 13px; font-weight: 600; letter-spacing: .04em;
+  font-size: 16px; font-weight: 700; letter-spacing: -.02em;
   display: flex; align-items: center; gap: 9px;
+  color: #fff;
 }
 .nav-pulse {
-  width: 7px; height: 7px; border-radius: 50%;
-  background: var(--accent); box-shadow: 0 0 9px var(--accent);
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--accent); box-shadow: 0 0 10px var(--accent);
   animation: pulse 2.5s ease infinite;
 }
-@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+@keyframes pulse { 0%,100%{opacity:1; transform:scale(1)} 50%{opacity:.4; transform:scale(0.85)} }
+
+/* ─── PROFILE DROP-DOWN SELECTOR ────────────────────────────── */
+.profile-dropdown-container {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-right: 16px;
+}
+.profile-select-el {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  outline: none;
+  cursor: pointer;
+  transition: border-color 0.2s, background-color 0.2s;
+}
+.profile-select-el:focus {
+  border-color: var(--accent);
+}
+.profile-phone-input {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-family: var(--mono);
+  outline: none;
+  width: 140px;
+  transition: border-color 0.2s, width 0.2s, box-shadow 0.2s;
+}
+.profile-phone-input:focus {
+  border-color: var(--accent);
+  width: 170px;
+  box-shadow: 0 0 8px rgba(var(--acc-rgb), 0.2);
+}
 
 /* ─── SELECT SCREEN ──────────────────────────────────────────── */
 .select-body {
@@ -62,89 +110,110 @@ button { font-family: var(--font); cursor: pointer; }
   padding: 48px 24px;
 }
 .select-body h1 {
-  font-size: clamp(22px, 4vw, 34px); font-weight: 700;
-  letter-spacing: -.025em; color: var(--text); text-align: center; margin-bottom: 8px;
+  font-size: clamp(24px, 5vw, 36px); font-weight: 800;
+  letter-spacing: -.03em; color: var(--text); text-align: center; margin-bottom: 8px;
+  background: linear-gradient(135deg, #fff 30%, var(--text2) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
 }
-.select-sub { font-size: 14px; color: var(--text2); text-align: center; margin-bottom: 48px; }
+.select-sub { font-size: 15px; color: var(--text2); text-align: center; margin-bottom: 48px; }
 
 /* Restaurant grid */
 .r-grid {
   display: grid; grid-template-columns: repeat(3,1fr);
-  gap: 18px; max-width: 860px; width: 100%;
+  gap: 24px; max-width: 960px; width: 100%;
 }
-@media (max-width: 720px) { .r-grid { grid-template-columns: 1fr; max-width: 380px; } }
-@media (max-width: 960px) and (min-width: 721px) { .r-grid { grid-template-columns: repeat(2,1fr); } }
+@media (max-width: 768px) { .r-grid { grid-template-columns: 1fr; max-width: 400px; } }
+@media (max-width: 992px) and (min-width: 769px) { .r-grid { grid-template-columns: repeat(2,1fr); } }
 
 .r-card {
-  background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
   overflow: hidden; cursor: pointer;
-  transition: transform .25s cubic-bezier(.4,0,.2,1), border-color .25s, box-shadow .25s;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  transition: transform .3s cubic-bezier(.16,1,3,1), border-color .3s, box-shadow .3s;
 }
-.r-card:hover { transform: translateY(-5px); border-color: var(--border2); }
+.r-card:hover { 
+  transform: translateY(-6px); 
+  border-color: var(--border2); 
+  box-shadow: 0 12px 30px rgba(0,0,0,0.3);
+}
 .r-hero {
-  height: 88px; display: flex; align-items: center; justify-content: center; font-size: 46px;
+  height: 120px; display: flex; align-items: center; justify-content: center; font-size: 56px;
+  background: linear-gradient(180deg, rgba(255,255,255,0.03) 0%, rgba(0,0,0,0.2) 100%);
+  border-bottom: 1px solid var(--border);
+  transition: transform 0.3s;
 }
-.r-body { padding: 16px 18px 20px; }
-.r-name { font-size: 15px; font-weight: 600; color: var(--text); margin-bottom: 2px; }
-.r-cuisine { font-size: 11px; color: var(--text2); letter-spacing: .03em; margin-bottom: 12px; }
-.r-sep { height: 1px; background: var(--border); margin-bottom: 11px; }
-.r-tagline { font-size: 12px; color: var(--text3); line-height: 1.55; margin-bottom: 16px; }
+.r-card:hover .r-hero {
+  transform: scale(1.04);
+}
+.r-body { padding: 20px 22px 24px; }
+.r-name { font-size: 18px; font-weight: 700; color: var(--text); margin-bottom: 4px; }
+.r-cuisine { font-size: 12px; color: var(--text2); letter-spacing: .02em; margin-bottom: 14px; text-transform: uppercase; font-weight: 500; }
+.r-sep { height: 1px; background: var(--border); margin-bottom: 14px; }
+.r-tagline { font-size: 13px; color: var(--text2); line-height: 1.6; margin-bottom: 20px; min-height: 40px; }
 .r-btn {
-  width: 100%; padding: 9px 0; border: none; border-radius: 8px;
-  font-size: 13px; font-weight: 500; color: #fff; letter-spacing: .02em;
-  transition: filter .15s, transform .1s;
+  width: 100%; padding: 10px 0; border: none; border-radius: 10px;
+  font-size: 14px; font-weight: 600; color: #fff; letter-spacing: .01em;
+  transition: filter .15s, transform .1s, box-shadow 0.2s;
 }
-.r-btn:hover { filter: brightness(1.14); }
-.r-btn:active { transform: scale(.98); }
+.r-btn:hover { filter: brightness(1.15); }
+.r-btn:active { transform: scale(.97); }
 
 /* ─── CHAT HEADER ────────────────────────────────────────────── */
 .chat-nav {
-  height: 52px; flex-shrink: 0;
-  display: flex; align-items: center; gap: 11px; padding: 0 18px;
-  border-bottom: 1px solid var(--border); background: var(--bg);
+  height: 60px; flex-shrink: 0;
+  display: flex; align-items: center; gap: 12px; padding: 0 24px;
+  border-bottom: 1px solid var(--border); background: rgba(8, 10, 16, 0.85);
+  backdrop-filter: blur(10px);
+  z-index: 100;
 }
 .back-btn {
-  width: 30px; height: 30px; border-radius: 7px;
-  border: 1px solid var(--border); background: none; color: var(--text2); font-size: 15px;
+  width: 34px; height: 34px; border-radius: 9px;
+  border: 1px solid var(--border); background: var(--surface); color: var(--text2); font-size: 16px;
   display: flex; align-items: center; justify-content: center;
-  transition: color .15s, border-color .15s;
+  transition: color .15s, border-color .15s, background-color 0.15s;
 }
-.back-btn:hover { color: var(--text); border-color: var(--border2); }
-.cnav-emoji { font-size: 19px; }
-.cnav-info  { display: flex; flex-direction: column; line-height: 1.2; }
-.cnav-name  { font-size: 14px; font-weight: 600; color: var(--text); }
-.cnav-sub   { font-size: 11px; color: var(--text2); }
+.back-btn:hover { color: var(--text); border-color: var(--border2); background: var(--surface2); }
+.cnav-emoji { font-size: 22px; }
+.cnav-info  { display: flex; flex-direction: column; line-height: 1.25; }
+.cnav-name  { font-size: 15px; font-weight: 700; color: var(--text); }
+.cnav-sub   { font-size: 11px; color: var(--text2); text-transform: uppercase; letter-spacing: 0.03em; }
 .cnav-space { flex: 1; }
+
 /* stage track */
-.stage-track { display: flex; align-items: center; }
+.stage-track { display: flex; align-items: center; gap: 3px; }
 .sdot {
-  width: 7px; height: 7px; border-radius: 50%;
+  width: 8px; height: 8px; border-radius: 50%;
   background: var(--text3); flex-shrink: 0;
   transition: background .35s, box-shadow .35s;
   cursor: default; position: relative;
 }
 .sdot[title]:hover::after {
   content: attr(title);
-  position: absolute; bottom: 14px; left: 50%; transform: translateX(-50%);
+  position: absolute; bottom: 18px; left: 50%; transform: translateX(-50%);
   background: var(--surface2); border: 1px solid var(--border2);
-  color: var(--text); font-size: 10px; padding: 2px 7px; border-radius: 4px;
+  color: var(--text); font-size: 11px; padding: 3px 8px; border-radius: 5px;
   white-space: nowrap; pointer-events: none; z-index: 10;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.3);
 }
 .sdot.done   { background: var(--accent); opacity: .55; }
-.sdot.active { background: var(--accent); box-shadow: 0 0 9px var(--accent);
+.sdot.active { background: var(--accent); box-shadow: 0 0 12px var(--accent);
                animation: sdot-pulse 2s ease infinite; }
-@keyframes sdot-pulse { 0%,100%{box-shadow:0 0 8px var(--accent)} 50%{box-shadow:0 0 20px var(--accent)} }
-.sline { width: 16px; height: 1px; background: var(--border); flex-shrink: 0; }
+@keyframes sdot-pulse { 0%,100%{box-shadow:0 0 6px var(--accent)} 50%{box-shadow:0 0 15px var(--accent)} }
+.sline { width: 16px; height: 1.5px; background: var(--border); flex-shrink: 0; }
 .sline.done { background: var(--accent); opacity: .3; }
 .session-chip {
-  font-size: 10px; color: var(--text3); font-family: var(--mono);
-  background: var(--surface); border: 1px solid var(--border);
-  padding: 3px 9px; border-radius: 20px;
+  font-size: 10px; color: var(--text2); font-family: var(--mono);
+  background: var(--surface2); border: 1px solid var(--border);
+  padding: 4px 10px; border-radius: 20px;
 }
 .provider-chip {
   font-size: 10px; color: var(--accent); font-family: var(--mono);
   background: rgba(99, 102, 241, 0.08); border: 1px solid rgba(99, 102, 241, 0.2);
-  padding: 3px 9px; border-radius: 20px;
+  padding: 4px 10px; border-radius: 20px;
 }
 
 /* ─── CHAT BODY ──────────────────────────────────────────────── */
@@ -152,24 +221,23 @@ button { font-family: var(--font); cursor: pointer; }
 
 /* Messages column */
 .chat-main { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-height: 0; }
-.messages  { flex: 1; overflow-y: auto; padding: 24px 26px; display: flex;
+.messages  { flex: 1; overflow-y: auto; padding: 28px 32px; display: flex;
               flex-direction: column; scroll-behavior: smooth; }
 
 /* ─── MESSAGE BUBBLES ────────────────────────────────────────── */
-.msg { display: flex; gap: 10px; margin-bottom: 18px; animation: msg-in .2s ease both; }
-@keyframes msg-in { from{opacity:0;transform:translateY(7px)} to{opacity:1;transform:none} }
+.msg { display: flex; gap: 12px; margin-bottom: 20px; animation: msg-in .25s cubic-bezier(0.16, 1, 0.3, 1) both; }
+@keyframes msg-in { from{opacity:0;transform:translateY(10px)} to{opacity:1;transform:none} }
 
 .msg-avatar {
-  width: 28px; height: 28px; border-radius: 7px; flex-shrink: 0; margin-top: 1px;
+  width: 32px; height: 32px; border-radius: 8px; flex-shrink: 0; margin-top: 1px;
   display: flex; align-items: center; justify-content: center;
-  font-size: 14px; background: var(--surface); border: 1px solid var(--border);
+  font-size: 16px; background: var(--surface2); border: 1px solid var(--border);
 }
 .msg-body  { flex: 1; min-width: 0; }
-.msg-meta  { display: flex; align-items: baseline; gap: 7px; margin-bottom: 4px; }
-.msg-name  { font-size: 12px; font-weight: 600; color: var(--text); }
+.msg-meta  { display: flex; align-items: baseline; gap: 8px; margin-bottom: 5px; }
+.msg-name  { font-size: 13px; font-weight: 600; color: var(--text); }
 .msg-time  { font-size: 10px; color: var(--text3); }
-/* AI message text — rendered as markdown */
-.msg-text  { font-size: 14px; line-height: 1.75; color: var(--text); }
+.msg-text  { font-size: 14.5px; line-height: 1.65; color: var(--text); }
 
 /* User bubble */
 .user-msg { flex-direction: row-reverse; gap: 0; }
@@ -177,62 +245,63 @@ button { font-family: var(--font); cursor: pointer; }
 .user-msg .msg-meta { flex-direction: row-reverse; }
 .user-msg .msg-name { display: none; }
 .user-msg .msg-text {
-  background: var(--surface2); border: 1px solid var(--border);
-  border-radius: 13px 2px 13px 13px;
-  padding: 10px 14px; max-width: 66%; font-size: 14px; color: var(--text);
+  background: var(--surface2); border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px 2px 14px 14px;
+  padding: 11px 15px; max-width: 66%; font-size: 14px; color: var(--text);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
 }
 
 /* ─── MARKDOWN ───────────────────────────────────────────────── */
-.md p                 { margin: 0 0 9px; }
+.md p                 { margin: 0 0 10px; }
 .md p:last-child      { margin: 0; }
 .md strong            { font-weight: 600; color: var(--text); }
 .md em                { font-style: italic; color: var(--text2); }
 .md a                 { color: var(--accent); text-decoration: none; }
 .md a:hover           { text-decoration: underline; }
-.md h1,.md h2,.md h3  { font-weight: 600; color: var(--text); margin: 14px 0 5px; }
-.md h1 { font-size: 17px; } .md h2 { font-size: 15px; } .md h3 { font-size: 14px; }
+.md h1,.md h2,.md h3  { font-weight: 700; color: var(--text); margin: 16px 0 6px; letter-spacing: -0.01em; }
+.md h1 { font-size: 18px; } .md h2 { font-size: 16px; } .md h3 { font-size: 14.5px; }
 .md code {
   background: var(--surface2); border: 1px solid var(--border);
-  padding: 1px 5px; border-radius: 5px;
-  font-family: var(--mono); font-size: 12.5px; color: #c9b1fd;
+  padding: 2px 6px; border-radius: 5px;
+  font-family: var(--mono); font-size: 12.5px; color: #a5b4fc;
 }
 .md pre {
-  background: var(--surface); border: 1px solid var(--border);
-  border-radius: 9px; padding: 13px 16px; overflow-x: auto; margin: 10px 0;
+  background: rgba(0,0,0,0.25); border: 1px solid var(--border);
+  border-radius: 10px; padding: 14px 18px; overflow-x: auto; margin: 12px 0;
 }
 .md pre code { background:none; border:none; padding:0; color: var(--text); font-size:13px; }
-.md ul, .md ol        { padding-left: 22px; margin: 7px 0; }
-.md li                { margin: 4px 0; font-size: 14px; }
+.md ul, .md ol        { padding-left: 24px; margin: 8px 0; }
+.md li                { margin: 5px 0; font-size: 14px; }
 .md li > p            { margin: 0; }
 .md blockquote {
-  border-left: 3px solid var(--accent); margin: 9px 0;
-  padding: 4px 14px; color: var(--text2); font-style: italic;
+  border-left: 3px solid var(--accent); margin: 10px 0;
+  padding: 6px 16px; color: var(--text2); font-style: italic; background: rgba(99,102,241,0.03); border-radius: 0 8px 8px 0;
 }
-.md hr                { border: none; border-top: 1px solid var(--border); margin: 14px 0; }
-.md table             { width:100%; border-collapse: collapse; margin: 10px 0; font-size: 13px; }
+.md hr                { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
+.md table             { width:100%; border-collapse: collapse; margin: 12px 0; font-size: 13.5px; }
 .md th {
-  background: var(--surface2); padding: 7px 13px;
+  background: var(--surface2); padding: 8px 14px;
   border: 1px solid var(--border); font-weight: 600; text-align: left; color: var(--text);
 }
-.md td                { padding: 7px 13px; border: 1px solid var(--border); color: var(--text2); }
-.md tr:nth-child(even) td { background: rgba(255,255,255,.02); }
+.md td                { padding: 8px 14px; border: 1px solid var(--border); color: var(--text2); }
+.md tr:nth-child(even) td { background: rgba(255,255,255,.01); }
 
 /* ─── TYPING INDICATOR ───────────────────────────────────────── */
 .typing { display: flex; align-items: center; gap: 4px; padding: 3px 0; }
 .typing span {
-  width: 6px; height: 6px; border-radius: 50%; background: var(--text3);
+  width: 6px; height: 6px; border-radius: 50%; background: var(--text2);
   animation: type-bounce 1.4s ease infinite;
 }
 .typing span:nth-child(2) { animation-delay: .16s; }
 .typing span:nth-child(3) { animation-delay: .32s; }
 @keyframes type-bounce {
-  0%,60%,100% { transform: translateY(0); opacity:.4; }
-  30%          { transform: translateY(-5px); opacity:1; }
+  0%,60%,100% { transform: translateY(0); opacity:.3; }
+  30%          { transform: translateY(-6px); opacity:1; }
 }
 
 /* Streaming cursor */
 .cur {
-  display: inline-block; width: 2px; height: 14px;
+  display: inline-block; width: 2.5px; height: 14px;
   vertical-align: text-bottom; margin-left: 1px; border-radius: 1px;
   background: var(--accent); animation: blink .9s step-start infinite;
 }
@@ -240,84 +309,270 @@ button { font-family: var(--font); cursor: pointer; }
 
 /* ─── INPUT AREA ─────────────────────────────────────────────── */
 .input-area {
-  padding: 11px 18px; border-top: 1px solid var(--border);
-  display: flex; align-items: flex-end; gap: 9px;
-  background: var(--bg); flex-shrink: 0;
+  padding: 16px 24px; border-top: 1px solid var(--border);
+  display: flex; align-items: flex-end; gap: 12px;
+  background: rgba(8, 10, 16, 0.8); backdrop-filter: blur(10px); flex-shrink: 0;
 }
 #chat-input {
   flex: 1; background: var(--surface); border: 1px solid var(--border);
-  border-radius: 10px; padding: 10px 14px;
-  color: var(--text); font-family: var(--font); font-size: 14px;
-  line-height: 1.55; resize: none; outline: none; max-height: 130px; overflow-y: auto;
+  border-radius: 12px; padding: 12px 16px;
+  color: var(--text); font-family: var(--font); font-size: 14.5px;
+  line-height: 1.5; resize: none; outline: none; max-height: 130px; overflow-y: auto;
   transition: border-color .2s, box-shadow .2s;
 }
-#chat-input:focus  { border-color: rgba(var(--acc-rgb),.45); box-shadow: 0 0 0 3px rgba(var(--acc-rgb),.09); }
+#chat-input:focus  { border-color: rgba(var(--acc-rgb),.55); box-shadow: 0 0 0 3px rgba(var(--acc-rgb),0.12); }
 #chat-input::placeholder { color: var(--text3); }
 #chat-input:disabled { opacity: .45; cursor: not-allowed; }
 #send-btn {
-  width: 37px; height: 37px; flex-shrink: 0; border: none; border-radius: 9px;
+  width: 42px; height: 42px; flex-shrink: 0; border: none; border-radius: 11px;
   background: var(--accent); color: #fff;
   display: flex; align-items: center; justify-content: center;
   transition: filter .15s, transform .1s, box-shadow .2s;
   box-shadow: 0 2px 14px rgba(var(--acc-rgb),.32);
 }
-#send-btn:hover   { filter: brightness(1.14); box-shadow: 0 3px 22px rgba(var(--acc-rgb),.50); }
+#send-btn:hover   { filter: brightness(1.15); box-shadow: 0 4px 22px rgba(var(--acc-rgb),.50); }
 #send-btn:active  { transform: scale(.94); }
-#send-btn:disabled { opacity:.38; cursor:not-allowed; filter:none; }
+#send-btn:disabled { opacity:.38; cursor:not-allowed; filter:none; box-shadow: none; }
 
 /* ─── ORDER SIDEBAR ──────────────────────────────────────────── */
 .sidebar {
-  width: 280px; flex-shrink: 0;
+  width: 320px; flex-shrink: 0;
   border-left: 1px solid var(--border);
+  background: rgba(11, 15, 26, 0.4);
+  backdrop-filter: blur(8px);
   display: flex; flex-direction: column; overflow: hidden;
 }
-@media (max-width: 680px) { .sidebar { display: none; } }
+@media (max-width: 900px) { .sidebar { display: none; } }
+
+/* Profile Card in Sidebar */
+.profile-card {
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.015);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.pc-title {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text2);
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+.pc-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.pc-phone {
+  font-size: 11px;
+  color: var(--text2);
+  opacity: 0.7;
+  font-family: var(--mono);
+}
+.badge-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 6px;
+}
+.p-badge {
+  font-size: 9px;
+  font-weight: 600;
+  padding: 2.5px 7px;
+  border-radius: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+.p-badge.dietary {
+  background: rgba(34, 197, 94, 0.1);
+  color: #4ade80;
+  border: 1px solid rgba(34, 197, 94, 0.2);
+}
+.p-badge.allergen {
+  background: rgba(239, 68, 68, 0.1);
+  color: #f87171;
+  border: 1px solid rgba(239, 68, 68, 0.2);
+}
+.p-badge.guest {
+  background: var(--surface);
+  color: var(--text2);
+  border: 1px solid var(--border);
+}
+
 .sb-head {
-  height: 48px; flex-shrink: 0; padding: 0 16px;
+  height: 48px; flex-shrink: 0; padding: 0 20px;
   display: flex; align-items: center; gap: 8px;
   border-bottom: 1px solid var(--border);
 }
-.sb-title { font-size: 13px; font-weight: 600; color: var(--text); }
+.sb-title { font-size: 13px; font-weight: 600; color: var(--text); letter-spacing: 0.01em; }
 .sb-badge {
   margin-left: auto; font-size: 10px; font-weight: 600;
   background: var(--surface2); color: var(--text2);
   padding: 2px 8px; border-radius: 20px;
 }
-.cart-list  { flex: 1; overflow-y: auto; padding: 10px 12px; display: flex; flex-direction: column; gap: 5px; }
-.cart-empty { font-size: 12px; color: var(--text3); text-align: center; padding: 28px 12px; line-height: 1.6; }
+
+.cart-list  { flex: 1; overflow-y: auto; padding: 14px 16px; display: flex; flex-direction: column; gap: 6px; }
+.cart-empty { font-size: 12px; color: var(--text3); text-align: center; padding: 40px 12px; line-height: 1.7; }
 .cart-item  {
-  display: flex; align-items: center; gap: 8px;
-  background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
-  padding: 8px 10px; animation: ci-in .25s ease;
+  display: flex; align-items: center; gap: 10px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+  padding: 10px 12px; animation: ci-in .25s cubic-bezier(0.16,1,0.3,1);
 }
-@keyframes ci-in { from{opacity:0;transform:translateX(9px)} to{opacity:1;transform:none} }
-.ci-name  { flex: 1; font-size: 12px; font-weight: 500; color: var(--text); line-height: 1.35; }
-.ci-qty   { font-size: 11px; font-weight: 600; color: var(--accent); }
-.ci-price { font-size: 12px; color: var(--text2); }
-.sb-foot  { flex-shrink: 0; padding: 12px 14px; border-top: 1px solid var(--border); }
+@keyframes ci-in { from{opacity:0;transform:translateX(10px)} to{opacity:1;transform:none} }
+.ci-name  { flex: 1; font-size: 13.5px; font-weight: 500; color: var(--text); line-height: 1.4; }
+.ci-qty   { font-size: 12px; font-weight: 600; color: var(--accent); }
+.ci-price { font-size: 13px; color: var(--text2); font-weight: 500; }
+
+.ci-warning {
+  font-size: 9px;
+  font-weight: 600;
+  color: #f87171;
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.15);
+  padding: 2.5px 6px;
+  border-radius: 4px;
+  margin-top: 4px;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  width: fit-content;
+  text-transform: uppercase;
+}
+
+/* Strike-through and original prices */
+.ci-price-container {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 1px;
+}
+.ci-price-orig {
+  font-size: 10px;
+  color: var(--text3);
+  text-decoration: line-through;
+}
+.ci-price-discounted {
+  font-size: 13px;
+  font-weight: 600;
+  color: #4ade80;
+}
+
+/* Calorie Goal Tracker */
+.calorie-tracker {
+  padding: 16px 20px;
+  border-top: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.015);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.ct-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.ct-title {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text2);
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+.ct-goal-btn {
+  background: none;
+  border: none;
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: 600;
+  cursor: pointer;
+  outline: none;
+}
+.ct-goal-btn:hover {
+  text-decoration: underline;
+}
+.ct-bar-container {
+  height: 6px;
+  background: rgba(255,255,255,0.04);
+  border-radius: 3px;
+  overflow: hidden;
+  position: relative;
+}
+.ct-bar {
+  height: 100%;
+  width: 0%;
+  background: var(--accent);
+  border-radius: 3px;
+  transition: width 0.4s cubic-bezier(0.16,1,0.3,1), background-color 0.4s ease, box-shadow 0.4s ease;
+}
+.ct-summary {
+  font-size: 11px;
+  color: var(--text2);
+  display: flex;
+  justify-content: space-between;
+  opacity: 0.85;
+}
+.ct-summary strong {
+  color: var(--text);
+  font-weight: 600;
+}
+
+/* Applied Promotions tags */
+.applied-promos {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-bottom: 12px;
+}
+.promo-tag {
+  font-size: 11px;
+  font-weight: 500;
+  color: #4ade80;
+  background: rgba(34, 197, 94, 0.06);
+  border: 1px solid rgba(34, 197, 94, 0.15);
+  padding: 4px 8px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.promo-tag::before {
+  content: '🏷️';
+}
+
+.sb-foot  { flex-shrink: 0; padding: 16px 20px; border-top: 1px solid var(--border); background: rgba(11, 15, 26, 0.5); }
 .total-row {
-  display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 13px;
+  display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;
 }
-.total-lbl { font-size: 12px; color: var(--text2); }
-.total-val { font-size: 22px; font-weight: 700; color: var(--text); }
+.total-row:last-of-type {
+  margin-bottom: 14px;
+}
+.total-lbl { font-size: 12.5px; color: var(--text2); }
+.subtotal-val { font-size: 14px; font-weight: 500; color: var(--text2); }
+.discount-val { font-size: 14px; font-weight: 600; color: #4ade80; }
+.total-val { font-size: 24px; font-weight: 700; color: var(--text); }
 #confirm-btn {
-  display: none; width: 100%; padding: 11px; border: none; border-radius: 9px;
+  display: none; width: 100%; padding: 12px; border: none; border-radius: 10px;
   background: var(--accent); color: #fff;
-  font-size: 13px; font-weight: 600; letter-spacing: .03em;
+  font-size: 14px; font-weight: 600; letter-spacing: .02em;
   transition: filter .15s, box-shadow .2s;
   box-shadow: 0 2px 18px rgba(var(--acc-rgb),.32);
   animation: confirm-glow 2.5s ease infinite;
 }
-@keyframes confirm-glow { 0%,100%{box-shadow:0 2px 16px rgba(var(--acc-rgb),.30)} 50%{box-shadow:0 4px 30px rgba(var(--acc-rgb),.55)} }
+@keyframes confirm-glow { 0%,100%{box-shadow:0 2px 16px rgba(var(--acc-rgb),.25)} 50%{box-shadow:0 4px 30px rgba(var(--acc-rgb),.45)} }
 #confirm-btn:hover { filter: brightness(1.12); }
 #confirm-btn.show  { display: block; }
 .done-card {
   display: none; flex-direction: column; align-items: center;
-  gap: 5px; padding: 20px 12px; text-align: center;
+  gap: 5px; padding: 16px 12px; text-align: center;
 }
 .done-card.show { display: flex; }
-.done-icon  { font-size: 34px; }
-.done-label { font-size: 14px; font-weight: 600; color: #4ade80; }
+.done-icon  { font-size: 36px; }
+.done-label { font-size: 15px; font-weight: 700; color: #4ade80; }
 .done-sub   { font-size: 11px; color: var(--text3); }
 </style>
 </head>
@@ -331,12 +586,19 @@ button { font-family: var(--font); cursor: pointer; }
   <nav class="nav">
     <div class="nav-brand"><div class="nav-pulse"></div>Restaurant AI</div>
     <div style="flex:1"></div>
+    <div class="profile-dropdown-container">
+      <select id="select-profile-select" onchange="changeProfile(this.value)" class="profile-select-el"></select>
+      <input type="text" id="select-phone-input" placeholder="Custom Phone..." onchange="changePhone(this.value)" class="profile-phone-input" />
+    </div>
     <span class="provider-chip" id="main-provider-chip" style="display:none"></span>
   </nav>
   <div class="select-body">
     <h1>What are you ordering tonight?</h1>
     <p class="select-sub">Choose a restaurant and let AI handle the rest</p>
-    <div class="r-grid" id="r-grid"></div>
+    <div class="r-grid" id="r-grid">
+      <!-- Loaded dynamically -->
+      <div style="grid-column: 1/-1; text-align: center; color: var(--text3); font-size: 14px;">Loading restaurants...</div>
+    </div>
   </div>
 </section>
 
@@ -353,6 +615,10 @@ button { font-family: var(--font); cursor: pointer; }
       <span class="cnav-sub"  id="cnav-sub"></span>
     </div>
     <div class="cnav-space"></div>
+    <div class="profile-dropdown-container">
+      <select id="chat-profile-select" onchange="changeProfile(this.value)" class="profile-select-el"></select>
+      <input type="text" id="chat-phone-input" placeholder="Custom Phone..." onchange="changePhone(this.value)" class="profile-phone-input" />
+    </div>
     <div class="stage-track" id="stage-track"></div>
     <div class="cnav-space"></div>
     <span class="provider-chip" id="provider-chip" style="display:none"></span>
@@ -378,6 +644,11 @@ button { font-family: var(--font); cursor: pointer; }
 
     <!-- Order sidebar -->
     <aside class="sidebar">
+      <!-- Dynamic Customer Profile Card -->
+      <div class="profile-card" id="profile-card">
+        <!-- Loaded dynamically -->
+      </div>
+
       <div class="sb-head">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
              stroke-width="2" style="color:var(--text2)">
@@ -386,14 +657,33 @@ button { font-family: var(--font); cursor: pointer; }
         <span class="sb-title">Your Order</span>
         <span class="sb-badge" id="sb-badge">0 items</span>
       </div>
+      
       <div class="cart-list" id="cart-list">
         <div class="cart-empty">Nothing added yet.<br>Start chatting to build your order.</div>
       </div>
+
+      <!-- Dynamic Calorie Tracker -->
+      <div class="calorie-tracker" id="calorie-tracker" style="display:none">
+        <!-- Loaded dynamically -->
+      </div>
+
       <div class="sb-foot" id="sb-foot" style="display:none">
+        <div class="total-row">
+          <span class="total-lbl">Subtotal</span>
+          <span class="subtotal-val" id="cart-subtotal">$0.00</span>
+        </div>
+        <div class="total-row" id="discount-row" style="display:none;">
+          <span class="total-lbl" style="color:#4ade80;">Discount</span>
+          <span class="discount-val" id="cart-discount">-$0.00</span>
+        </div>
         <div class="total-row">
           <span class="total-lbl">Total</span>
           <span class="total-val" id="cart-total">$0.00</span>
         </div>
+        
+        <!-- Applied promotions -->
+        <div class="applied-promos" id="applied-promos"></div>
+
         <button id="confirm-btn" onclick="confirmOrder()">Confirm &amp; Place Order</button>
         <div class="done-card" id="done-card">
           <div class="done-icon">✅</div>
@@ -415,11 +705,13 @@ button { font-family: var(--font); cursor: pointer; }
 
 /* ═══════════════════════════════════════════════════════════
    DATA
+   - RESTAURANT_METADATA: Maps backend DB restaurant names to emojis, tags, and colors.
+   - CUSTOMER_PROFILES: Seeded customer profiles for testing.
+   - FALLBACK_RESTAURANTS: Mock database fallback if API fails.
 ═══════════════════════════════════════════════════════════ */
-const RESTAURANTS = [
-  {
-    id:1, name:'The Smokehouse', emoji:'🍖', cuisine:'American BBQ · Burgers',
-    tagline:'Slow-smoked perfection since day one',
+const RESTAURANT_METADATA = {
+  'The Smokehouse': {
+    emoji:'🍖', tagline:'Slow-smoked perfection since day one',
     color:'#ff6b35', rgb:'255,107,53',
     greeting:`Howdy, partner! 🤠 Welcome to **The Smokehouse**.
 
@@ -432,11 +724,10 @@ Our pitmasters have been at it since 5am. Here's what's hot today:
 | Crispy Chicken Sando | $11.99 |
 | Loaded Fries | $5.99 |
 
-What can I fire up for you?`,
+What can I fire up for you?`
   },
-  {
-    id:2, name:'Bella Napoli', emoji:'🍕', cuisine:'Italian · Pizza · Pasta',
-    tagline:'Authentic Neapolitan cuisine, con amore',
+  'Bella Napoli': {
+    emoji:'🍕', tagline:'Authentic Neapolitan cuisine, con amore',
     color:'#ff4757', rgb:'255,71,87',
     greeting:`*Benvenuti a **Bella Napoli**!* 🍷
 
@@ -447,11 +738,10 @@ Our recommendations:
 - 🍝 **Spaghetti Carbonara** — $14.50 *(guanciale · egg yolk · pecorino)*
 - 🍮 **Tiramisu** — $7.50 *(mascarpone · espresso · ladyfingers)*
 
-What calls to your heart?`,
+What calls to your heart?`
   },
-  {
-    id:3, name:'Tokyo Bites', emoji:'🍣', cuisine:'Japanese · Sushi · Ramen',
-    tagline:'Precision. Freshness. Harmony.',
+  'Tokyo Bites': {
+    emoji:'🍣', tagline:'Precision. Freshness. Harmony.',
     color:'#00b4d8', rgb:'0,180,216',
     greeting:`*Irasshaimase.* 🙏
 
@@ -468,8 +758,23 @@ Tonkotsu Ramen        ........  $16.99
 Edamame               ........   $4.99
 \`\`\`
 
-How may I guide you this evening?`,
-  },
+How may I guide you this evening?`
+  }
+};
+
+const CUSTOMER_PROFILES = [
+  { phone: '', name: 'Guest Customer', badge: '👤 Guest Customer' },
+  { phone: '+1-555-0101', name: 'Alex Chen', badge: '🥜 Alex Chen (Peanut Allergy)' },
+  { phone: '+1-555-0102', name: 'Sofia Martinez', badge: '🥑 Sofia Martinez (Vegetarian, Shellfish/Fish Allergy)' },
+  { phone: '+81-90-0001', name: 'Yuki Tanaka', badge: '🌾 Yuki Tanaka (Gluten-Free Celiac)' },
+  { phone: '+1-555-0104', name: 'Jordan Blake', badge: '🌱 Jordan Blake (Vegan, Dairy/Egg Allergy)' },
+  { phone: '+1-555-0105', name: 'Priya Singh', badge: '🌰 Priya Singh (Tree Nut Allergy)' }
+];
+
+const FALLBACK_RESTAURANTS = [
+  { id: 4, name: 'The Smokehouse', emoji: '🍖', cuisine: 'American BBQ', tagline: 'Slow-smoked perfection since day one', color: '#ff6b35', rgb: '255,107,53', greeting: 'Howdy, partner! 🤠 Welcome to The Smokehouse.' },
+  { id: 5, name: 'Bella Napoli', emoji: '🍕', cuisine: 'Italian Pizza', tagline: 'Authentic Neapolitan cuisine, con amore', color: '#ff4757', rgb: '255,71,87', greeting: 'Benvenuti a Bella Napoli! 🍷' },
+  { id: 6, name: 'Tokyo Bites', emoji: '🍣', cuisine: 'Japanese Sushi', tagline: 'Precision. Freshness. Harmony.', color: '#00b4d8', rgb: '0,180,216', greeting: 'Irasshaimase. 🙏 Welcome to Tokyo Bites.' }
 ];
 
 const STAGES      = ['greeting','ordering','confirming','payment','done'];
@@ -484,11 +789,15 @@ const S = {
   stage:      0,
   cart:       [],
   streaming:  false,
+  menuItems:  {},           // maps item_id -> item metadata loaded from API
+  customerPhone: '',
+  customerProfile: null,
+  calorieGoal: 1000,
+  activePromotions: []
 };
 
 /* ═══════════════════════════════════════════════════════════
    MARKED SETUP
-   Renders during streaming: raw text → final: markdown
 ═══════════════════════════════════════════════════════════ */
 marked.setOptions({ breaks:true, gfm:true });
 
@@ -497,8 +806,10 @@ function md(text) {
 }
 
 /* ═══════════════════════════════════════════════════════════
-   INIT — build restaurant cards
+   RESTAURANT AND PROFILE INITIALIZATION
 ═══════════════════════════════════════════════════════════ */
+let RESTAURANTS = [];
+
 document.addEventListener('DOMContentLoaded', () => {
   // Fetch active LLM provider configuration
   fetch('/api/v1/chat/config')
@@ -520,12 +831,55 @@ document.addEventListener('DOMContentLoaded', () => {
     })
     .catch(err => console.warn('Failed to load active LLM config', err));
 
+  // Initialize dropdown contents
+  initProfileSelectors();
+  renderProfile();
+
+  // Load restaurants dynamically from API
   const grid = document.getElementById('r-grid');
-  RESTAURANTS.forEach((r, i) => {
+  fetch('/api/v1/restaurants')
+    .then(res => {
+      if (!res.ok) throw new Error(`Status ${res.status}`);
+      return res.json();
+    })
+    .then(data => {
+      if (!data || data.length === 0) throw new Error("No active restaurants");
+      
+      RESTAURANTS = data.map(dbRes => {
+        const meta = RESTAURANT_METADATA[dbRes.name] || {
+          emoji: '🍽️', tagline: dbRes.personality.split(',')[0],
+          color: '#6366f1', rgb: '99,102,241',
+          greeting: `Welcome to **${dbRes.name}**!`
+        };
+        return {
+          id: dbRes.id,
+          name: dbRes.name,
+          emoji: meta.emoji,
+          cuisine: dbRes.cuisine_type,
+          tagline: meta.tagline,
+          color: meta.color,
+          rgb: meta.rgb,
+          greeting: meta.greeting
+        };
+      });
+      renderRestaurantGrid();
+    })
+    .catch(err => {
+      console.warn("Falling back to seeded list due to error:", err);
+      RESTAURANTS = FALLBACK_RESTAURANTS;
+      renderRestaurantGrid();
+    });
+});
+
+function renderRestaurantGrid() {
+  const grid = document.getElementById('r-grid');
+  grid.innerHTML = '';
+  
+  RESTAURANTS.forEach(r => {
     const card = document.createElement('div');
     card.className = 'r-card';
     card.innerHTML = `
-      <div class="r-hero" style="background:linear-gradient(145deg,${r.color}1a,${r.color}08)">${r.emoji}</div>
+      <div class="r-hero" style="background:linear-gradient(145deg,${r.color}1e,${r.color}08)">${r.emoji}</div>
       <div class="r-body">
         <div class="r-name">${r.name}</div>
         <div class="r-cuisine">${r.cuisine}</div>
@@ -539,7 +893,126 @@ document.addEventListener('DOMContentLoaded', () => {
     card.addEventListener('click', () => openRestaurant(r));
     grid.appendChild(card);
   });
-});
+}
+
+function initProfileSelectors() {
+  const selectEl = document.getElementById('select-profile-select');
+  const chatEl = document.getElementById('chat-profile-select');
+  
+  [selectEl, chatEl].forEach(el => {
+    if (!el) return;
+    el.innerHTML = '';
+    CUSTOMER_PROFILES.forEach(p => {
+      const opt = document.createElement('option');
+      opt.value = p.phone;
+      opt.textContent = p.badge;
+      el.appendChild(opt);
+    });
+  });
+}
+
+/* ═══════════════════════════════════════════════════════════
+   PROFILE STATE CONTROLS
+═══════════════════════════════════════════════════════════ */
+function changeProfile(phone) {
+  S.customerPhone = phone;
+  
+  const selectEl = document.getElementById('select-profile-select');
+  const chatEl = document.getElementById('chat-profile-select');
+  const selectPhoneEl = document.getElementById('select-phone-input');
+  const chatPhoneEl = document.getElementById('chat-phone-input');
+  
+  if (selectEl) selectEl.value = phone;
+  if (chatEl) chatEl.value = phone;
+  if (selectPhoneEl) selectPhoneEl.value = phone;
+  if (chatPhoneEl) chatPhoneEl.value = phone;
+  
+  if (!phone) {
+    S.customerProfile = null;
+  } else {
+    S.customerProfile = getMockProfile(phone);
+  }
+  
+  renderProfile();
+  renderCart();
+}
+
+function changePhone(phone) {
+  S.customerPhone = phone;
+  
+  const seeded = CUSTOMER_PROFILES.find(x => x.phone === phone);
+  const selectEl = document.getElementById('select-profile-select');
+  const chatEl = document.getElementById('chat-profile-select');
+  
+  if (seeded) {
+    if (selectEl) selectEl.value = phone;
+    if (chatEl) chatEl.value = phone;
+  } else {
+    if (selectEl) selectEl.value = '';
+    if (chatEl) chatEl.value = '';
+  }
+  
+  const selectPhoneEl = document.getElementById('select-phone-input');
+  const chatPhoneEl = document.getElementById('chat-phone-input');
+  if (selectPhoneEl) selectPhoneEl.value = phone;
+  if (chatPhoneEl) chatPhoneEl.value = phone;
+  
+  S.customerProfile = getMockProfile(phone);
+  renderProfile();
+  renderCart();
+}
+
+function getMockProfile(phone) {
+  if (phone === '+1-555-0101') return { name: 'Alex Chen', allergens: ['peanuts'], dietary_restrictions: [] };
+  if (phone === '+1-555-0102') return { name: 'Sofia Martinez', allergens: ['shellfish', 'fish'], dietary_restrictions: ['vegetarian'] };
+  if (phone === '+81-90-0001') return { name: 'Yuki Tanaka', allergens: ['gluten'], dietary_restrictions: ['gluten-free'] };
+  if (phone === '+1-555-0104') return { name: 'Jordan Blake', allergens: ['dairy', 'eggs'], dietary_restrictions: ['vegan'] };
+  if (phone === '+1-555-0105') return { name: 'Priya Singh', allergens: ['tree_nuts'], dietary_restrictions: [] };
+  if (!phone) return null;
+  return { name: 'Customer', allergens: [], dietary_restrictions: [] };
+}
+
+function renderProfile() {
+  const card = document.getElementById('profile-card');
+  if (!card) return;
+  
+  if (!S.customerPhone) {
+    card.innerHTML = `
+      <div class="pc-title">Customer Profile</div>
+      <div class="pc-name">👤 Guest Customer</div>
+      <div class="badge-row">
+        <span class="p-badge guest">No phone linked</span>
+      </div>
+    `;
+    return;
+  }
+  
+  const prof = S.customerProfile || { name: 'Customer', allergens: [], dietary_restrictions: [] };
+  let badges = '';
+  
+  if (prof.dietary_restrictions && prof.dietary_restrictions.length) {
+    prof.dietary_restrictions.forEach(d => {
+      badges += `<span class="p-badge dietary">${d}</span>`;
+    });
+  }
+  
+  if (prof.allergens && prof.allergens.length) {
+    prof.allergens.forEach(a => {
+      badges += `<span class="p-badge allergen">🚫 ${a}</span>`;
+    });
+  }
+  
+  if (!badges) {
+    badges = '<span class="p-badge guest">No dietary/allergen flags</span>';
+  }
+  
+  card.innerHTML = `
+    <div class="pc-title">Customer Profile</div>
+    <div class="pc-name">👤 ${prof.name || 'Customer'}</div>
+    <div class="pc-phone">${S.customerPhone}</div>
+    <div class="badge-row">${badges}</div>
+  `;
+}
 
 /* ═══════════════════════════════════════════════════════════
    NAVIGATION
@@ -550,6 +1023,8 @@ async function openRestaurant(r) {
   S.stage      = 0;
   S.cart       = [];
   S.streaming  = false;
+  S.menuItems  = {};
+  S.activePromotions = [];
 
   // Accent colours
   document.documentElement.style.setProperty('--accent',  r.color);
@@ -565,14 +1040,33 @@ async function openRestaurant(r) {
   document.getElementById('messages').innerHTML  = '';
   document.getElementById('chat-input').value    = '';
   document.getElementById('chat-input').style.height = '';
+  
   resetCart();
   renderStages();
+  renderProfile();
 
-  // Switch
+  // Switch screens
   document.getElementById('screen-select').classList.remove('active');
   document.getElementById('screen-chat').classList.add('active');
 
   setTimeout(() => document.getElementById('chat-input').focus(), 80);
+
+  // Pre-load restaurant menu items for calculations
+  try {
+    const res = await fetch('/api/v1/menu', {
+      headers: { 'X-Restaurant-ID': String(S.restaurant.id) }
+    });
+    if (res.ok) {
+      const menuData = await res.json();
+      for (const cat of Object.keys(menuData)) {
+        for (const item of menuData[cat]) {
+          S.menuItems[item.id] = item;
+        }
+      }
+    }
+  } catch (err) {
+    console.warn("Could not pre-load menu details:", err);
+  }
 
   // Greet dynamically from backend AI
   await streamFromApi("Hello, I'd like to order.");
@@ -613,16 +1107,72 @@ function setStage(idx) {
 }
 
 /* ═══════════════════════════════════════════════════════════
-   CART
+   CALORIE GOAL SYSTEM
+═══════════════════════════════════════════════════════════ */
+function renderCalorieTracker() {
+  const tracker = document.getElementById('calorie-tracker');
+  if (!tracker) return;
+  
+  if (!S.restaurant) {
+    tracker.style.display = 'none';
+    return;
+  }
+  
+  tracker.style.display = 'flex';
+  
+  let totalCal = 0;
+  S.cart.forEach(item => {
+    const itemId = item.item_id || item.id;
+    const qty = item.qty || item.quantity || 1;
+    const menuItem = S.menuItems[itemId];
+    if (menuItem && menuItem.nutrition_info && menuItem.nutrition_info.calories) {
+      totalCal += menuItem.nutrition_info.calories * qty;
+    }
+  });
+  
+  const pct = Math.min(Math.round((totalCal / S.calorieGoal) * 100), 100);
+  const progressColor = totalCal > S.calorieGoal ? '#ef4444' : (totalCal > S.calorieGoal * 0.8 ? '#f59e0b' : 'var(--accent)');
+  
+  tracker.innerHTML = `
+    <div class="ct-head">
+      <span class="ct-title">Calorie Limit</span>
+      <button class="ct-goal-btn" onclick="setCustomCalorieGoal()">Goal: ${S.calorieGoal} kcal</button>
+    </div>
+    <div class="ct-bar-container">
+      <div class="ct-bar" style="width: ${pct}%; background-color: ${progressColor};"></div>
+    </div>
+    <div class="ct-summary">
+      <span>Total: <strong>${totalCal} kcal</strong></span>
+      <span>Goal: ${S.calorieGoal} kcal</span>
+    </div>
+  `;
+}
+
+function setCustomCalorieGoal() {
+  const newGoal = prompt("Enter your meal calorie goal (kcal):", S.calorieGoal || 1000);
+  if (newGoal) {
+    const num = parseInt(newGoal, 10);
+    if (!isNaN(num) && num > 0) {
+      S.calorieGoal = num;
+      renderCalorieTracker();
+    }
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   CART RENDERING
 ═══════════════════════════════════════════════════════════ */
 function resetCart() {
   document.getElementById('cart-list').innerHTML =
     '<div class="cart-empty">Nothing added yet.<br>Start chatting to build your order.</div>';
   document.getElementById('sb-foot').style.display = 'none';
   document.getElementById('sb-badge').textContent  = '0 items';
+  document.getElementById('cart-subtotal').textContent = '$0.00';
+  document.getElementById('cart-discount').textContent = '$0.00';
   document.getElementById('cart-total').textContent = '$0.00';
   document.getElementById('confirm-btn').classList.remove('show');
   document.getElementById('done-card').classList.remove('show');
+  renderCalorieTracker();
 }
 
 function renderCart() {
@@ -636,30 +1186,115 @@ function renderCart() {
     list.innerHTML = '<div class="cart-empty">Nothing added yet.<br>Start chatting to build your order.</div>';
     foot.style.display = 'none';
     badge.textContent  = '0 items';
+    renderCalorieTracker();
     return;
   }
 
   foot.style.display = 'block';
-  let total = 0, count = 0;
+  let total = 0, subtotal = 0, count = 0;
 
   S.cart.forEach(item => {
     const qty   = item.qty || item.quantity || 1;
     const price = parseFloat(item.price || item.price_snapshot || 0);
-    total += qty * price; count += qty;
+    const origPrice = parseFloat(item.original_price || item.price_snapshot || price);
+    
+    total += qty * price;
+    subtotal += qty * origPrice;
+    count += qty;
+
+    // Check allergen warnings for this item
+    const itemId = item.item_id || item.id;
+    let allergenWarningHtml = '';
+    
+    if (item.allergen_warnings && item.allergen_warnings.length) {
+      allergenWarningHtml = `<div class="ci-warning">⚠️ contains ${item.allergen_warnings.join(', ')}</div>`;
+    } else if (S.customerProfile && S.customerProfile.allergens) {
+      const menuItem = S.menuItems[itemId];
+      if (menuItem && menuItem.allergens) {
+        const matched = menuItem.allergens.filter(a => S.customerProfile.allergens.includes(a));
+        if (matched.length) {
+          allergenWarningHtml = `<div class="ci-warning">⚠️ contains ${matched.join(', ')}</div>`;
+        }
+      }
+    }
 
     const row = document.createElement('div');
     row.className = 'cart-item';
+    
+    let priceHtml = '';
+    if (price < origPrice) {
+      priceHtml = `
+        <div class="ci-price-container">
+          <span class="ci-price-orig">$${(qty * origPrice).toFixed(2)}</span>
+          <span class="ci-price-discounted">$${(qty * price).toFixed(2)}</span>
+        </div>
+      `;
+    } else {
+      priceHtml = `<span class="ci-price">$${(qty * price).toFixed(2)}</span>`;
+    }
+
     row.innerHTML = `
-      <span class="ci-name">${esc(item.name || item.name_snapshot || 'Item')}</span>
+      <div style="flex:1; display:flex; flex-direction:column;">
+        <span class="ci-name">${esc(item.name || item.name_snapshot || 'Item')}</span>
+        ${allergenWarningHtml}
+      </div>
       <span class="ci-qty">×${qty}</span>
-      <span class="ci-price">$${(qty * price).toFixed(2)}</span>`;
+      ${priceHtml}
+    `;
     list.appendChild(row);
   });
 
   badge.textContent = `${count} item${count !== 1 ? 's' : ''}`;
+  
+  // Update totals
+  document.getElementById('cart-subtotal').textContent = `$${subtotal.toFixed(2)}`;
+  
+  const discount = subtotal - total;
+  const discRow = document.getElementById('discount-row');
+  if (discount > 0.01) {
+    discRow.style.display = 'flex';
+    document.getElementById('cart-discount').textContent = `-$${discount.toFixed(2)}`;
+  } else {
+    discRow.style.display = 'none';
+  }
   document.getElementById('cart-total').textContent = `$${total.toFixed(2)}`;
 
+  // Show applied promotions tags
+  const promoContainer = document.getElementById('applied-promos');
+  if (promoContainer) {
+    promoContainer.innerHTML = '';
+    const promoLabels = new Set();
+    
+    // Scan items for discount labels
+    S.cart.forEach(item => {
+      if (item.price < item.original_price) {
+        const itemId = item.item_id || item.id;
+        const menuItem = S.menuItems[itemId];
+        if (menuItem && menuItem.applied_promotions) {
+          menuItem.applied_promotions.forEach(l => promoLabels.add(l));
+        } else {
+          promoLabels.add("Discount Active");
+        }
+      }
+    });
+    
+    if (S.activePromotions && S.activePromotions.length) {
+      S.activePromotions.forEach(p => {
+        promoLabels.add(p.label || p.name);
+      });
+    }
+
+    promoLabels.forEach(label => {
+      const tag = document.createElement('div');
+      tag.className = 'promo-tag';
+      tag.textContent = label;
+      promoContainer.appendChild(tag);
+    });
+  }
+
   if (S.stage >= 2) document.getElementById('confirm-btn').classList.add('show');
+  
+  renderCalorieTracker();
 }
 
 function pushCartItem(item) {
@@ -719,7 +1354,6 @@ function addTypingShell() {
   return w;
 }
 
-/** Creates an empty AI message shell, returns the text target element. */
 function createAiShell() {
   const msgs = document.getElementById('messages');
   const w = document.createElement('div');
@@ -738,57 +1372,43 @@ function createAiShell() {
 }
 
 /* ═══════════════════════════════════════════════════════════
-   STREAMING — two paths:
-     streamText()    : local typewriter (greeting + demo fallback)
-     streamFromApi() : real SSE from FastAPI /api/v1/chat/stream
+   STREAMING
 ═══════════════════════════════════════════════════════════ */
-
-/**
- * Local typewriter stream. Used for the greeting and as
- * a graceful fallback when the backend is unreachable.
- */
 async function streamText(text, greeting = false) {
   S.streaming = true;
   setUI(false);
 
   const typing = addTypingShell();
-  await sleep(greeting ? 450 : 550);
+  await sleep(greeting ? 250 : 350);
   typing.remove();
 
   const target = createAiShell();
-  const cursor = mkCursor();
-  let buf = '';
 
-  const delay = greeting ? 13 : 22;
-
-  for (const ch of text) {
-    buf += ch;
-    target.innerHTML = md(buf);
-    const container = target.lastElementChild || target;
-    container.appendChild(cursor);
+  if (greeting || text.length > 250) {
+    // Render large greetings and menu tables instantly (no slow character typing)
+    target.innerHTML = md(text);
     scrollDown();
-    await sleep(ch === '\n' ? 25 : delay);
+  } else {
+    // Fast typewriter for short conversational responses
+    const cursor = mkCursor();
+    let buf = '';
+    for (const ch of text) {
+      buf += ch;
+      target.innerHTML = md(buf);
+      const container = target.lastElementChild || target;
+      container.appendChild(cursor);
+      scrollDown();
+      await sleep(4);
+    }
+    cursor.remove();
+    finaliseMarkdown(target, buf);
   }
-
-  // ── Finalise: replace raw text with rendered markdown ──
-  cursor.remove();
-  finaliseMarkdown(target, buf);
 
   S.streaming = false;
   setUI(true);
   focusInput();
 }
 
-/**
- * Real SSE streaming from the FastAPI backend.
- * Falls back to local mock if the request fails.
- *
- * Expected SSE events (one per line):
- *   data: {"token": "..."}           → text token
- *   data: {"cart": [...]}            → cart update
- *   data: {"stage": "ordering"}      → stage update
- *   data: [DONE]                     → stream complete
- */
 async function streamFromApi(message) {
   S.streaming = true;
   setUI(false);
@@ -806,7 +1426,11 @@ async function streamFromApi(message) {
         'Content-Type':    'application/json',
         'X-Restaurant-ID': String(S.restaurant.id),
       },
-      body: JSON.stringify({ message, session_id: S.sessionId }),
+      body: JSON.stringify({ 
+        message, 
+        session_id: S.sessionId,
+        customer_phone: S.customerPhone || null
+      }),
     });
 
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -841,23 +1465,56 @@ async function streamFromApi(message) {
           scrollDown();
         }
 
-        // ── Cart update (emitted after tool calls complete) ──
-        if (p.cart)  { S.cart = p.cart; renderCart(); }
+        // ── Cart update ──
+        if (p.cart)  { S.cart = p.cart; }
 
         // ── Stage update ──
         if (p.stage) {
           const idx = STAGES.indexOf(p.stage);
           if (idx > S.stage) setStage(idx);
         }
+
+        // ── Profile and Promos updates ──
+        if (p.customer_profile !== undefined) {
+          S.customerProfile = p.customer_profile;
+          renderProfile();
+        }
+        
+        if (p.customer_phone !== undefined && p.customer_phone !== null) {
+          if (S.customerPhone !== p.customer_phone) {
+            S.customerPhone = p.customer_phone;
+            
+            const selectEl = document.getElementById('select-profile-select');
+            const chatEl = document.getElementById('chat-profile-select');
+            const selectPhoneEl = document.getElementById('select-phone-input');
+            const chatPhoneEl = document.getElementById('chat-phone-input');
+            
+            if (selectPhoneEl) selectPhoneEl.value = p.customer_phone;
+            if (chatPhoneEl) chatPhoneEl.value = p.customer_phone;
+            
+            const seeded = CUSTOMER_PROFILES.find(x => x.phone === p.customer_phone);
+            if (seeded) {
+              if (selectEl) selectEl.value = p.customer_phone;
+              if (chatEl) chatEl.value = p.customer_phone;
+            } else {
+              if (selectEl) selectEl.value = '';
+              if (chatEl) chatEl.value = '';
+            }
+          }
+        }
+        
+        if (p.active_promotions !== undefined) {
+          S.activePromotions = p.active_promotions;
+        }
+        
+        renderCart();
       }
     }
 
-    // ── Finalise ──
     if (target) { cursor?.remove(); finaliseMarkdown(target, buf); }
-    else        { typing.remove(); }          // no tokens came through
+    else        { typing.remove(); }
 
   } catch (_) {
-    // Backend not available — fall through to mock
     typing.remove();
     const isInitial = (message === "Hello, I'd like to order.");
     const respText = isInitial ? S.restaurant.greeting : getMock(message).text;
@@ -875,10 +1532,6 @@ async function streamFromApi(message) {
   focusInput();
 }
 
-/**
- * Replace raw streamed text with rendered, sanitised markdown.
- * Fades in so the swap isn't jarring.
- */
 function finaliseMarkdown(el, text) {
   el.className     = 'msg-text md';
   el.innerHTML     = md(text);
@@ -904,10 +1557,10 @@ function handleKey(e) {
 }
 
 /* ═══════════════════════════════════════════════════════════
-   MOCK RESPONSES (demo mode — when backend is unreachable)
+   MOCK RESPONSES (for demo/fallback mode)
 ═══════════════════════════════════════════════════════════ */
 const MOCK = {
-  1: [
+  4: [
     { re:/ribs|bbq|smok/i,
       text:`**Excellent taste, partner!** 🔥\n\nThe **BBQ Ribs Platter** is going on your order:\n\n> *12 hours over hickory — falling off the bone*\n\nWant to add **Loaded Fries** ($5.99)? Cheese, bacon, jalapeños — the full deal.`,
       item:{ name:'BBQ Ribs Platter', price:18.49 } },
@@ -923,7 +1576,7 @@ const MOCK = {
     { re:/confirm|place|done/i,
       text:`Your order is **confirmed** and heading to the kitchen RIGHT NOW! 🎉\n\nThanks for choosing The Smokehouse. Enjoy the feast!`, stageUp:true },
   ],
-  2: [
+  5: [
     { re:/pizza|margherita/i,
       text:`Magnifico! 🍕\n\n**Margherita Classica** — going on your order.\n\n*San Marzano · Fior di latte · Fresh basil*\n\nShall I also add **Spaghetti Carbonara** ($14.50)?`,
       item:{ name:'Margherita Classica', price:13.99 } },
@@ -936,7 +1589,7 @@ const MOCK = {
     { re:/confirm|place|order/i,
       text:`**Perfetto!** 🇮🇹 Your order is confirmed.\n\n*Grazie mille — Buon appetito!* 🌹`, stageUp:true },
   ],
-  3: [
+  6: [
     { re:/salmon|sashimi|sushi/i,
       text:`An excellent selection. 🐟\n\n**Salmon Sashimi (8pc)** — noted.\n\n| Detail | Info |\n|--------|------|\n| Origin | Market-fresh today |\n| Served with | Wasabi, ginger |\n| Price | $16.00 |\n\nThe **Dragon Roll** ($17.99) pairs beautifully.`,
       item:{ name:'Salmon Sashimi (8pc)', price:16.00 } },

@@ -52,11 +52,18 @@ async def run_conversation(restaurant_id: int):
             "messages": [],
             "restaurant_id": restaurant_id,
             "session_id": session_id,
+            "language_code": "en",
+            "customer_phone": None,
             "customer_name": None,
+            "customer_profile": None,
             "cart": [],
             "order_id": order.id,
             "stage": "greeting",
             "menu_text": menu_text,
+            "active_promotions": [],
+            "order_rules": [],
+            "allergen_warnings_shown": [],
+            "upsells_shown": [],
             "error_message": None,
         }
 
