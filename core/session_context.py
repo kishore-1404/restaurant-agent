@@ -38,6 +38,7 @@ class SessionContext:
 
     # History
     order_history_summary:   Optional[str] = None  # "You usually order X"
+    predispatch_facts:       dict = field(default_factory=dict)
 
 
 async def build_session_context(

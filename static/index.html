@@ -454,7 +454,7 @@ button { font-family: var(--font); cursor: pointer; }
 .ci-price-orig {
   font-size: 10px;
   color: var(--text3);
-  text-decoration: line-through;
+  text-decoration: line-through !important;
 }
 .ci-price-discounted {
   font-size: 13px;
@@ -1267,7 +1267,9 @@ function renderCart() {
     
     // Scan items for discount labels
     S.cart.forEach(item => {
-      if (item.price < item.original_price) {
+      const price = parseFloat(item.price || item.price_snapshot || 0);
+      const origPrice = parseFloat(item.original_price || item.price_snapshot || price);
+      if (price < origPrice) {
         const itemId = item.item_id || item.id;
         const menuItem = S.menuItems[itemId];
         if (menuItem && menuItem.applied_promotions) {

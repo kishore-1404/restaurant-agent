@@ -1,6 +1,5 @@
-# core/tools.py  — complete replacement
+# core/tools.py
 from langchain_core.tools import tool
-
 
 # ─── ORDER MODIFICATION TOOLS ─────────────────────────────────────────────────
 
@@ -46,140 +45,131 @@ def clear_order() -> str:
     return "Cleared all items from order."
 
 
-# ─── MENU INTELLIGENCE TOOLS ──────────────────────────────────────────────────
+# ─── SQL-BACKED INTELLIGENCE TOOLS ────────────────────────────────────────────
 
 @tool
-def search_menu(query: str, safe_only: bool = False) -> str:
+def safety_audit(allergens: list[str], dietary: list[str]) -> str:
     """
-    Full-text search the menu. Returns matching items with prices.
-    Set safe_only=True to filter out items conflicting with customer's dietary profile.
+    Audit the menu or order safety based on allergens and dietary restrictions.
+    Returns safe items, unsafe items, and items that can be modified to be safe.
     """
-    return f"Searching menu for: {query}"
-
-
-@tool
-def get_menu_category(category_name: str) -> str:
-    """Get all available items in a specific category."""
-    return f"Fetching items in category: {category_name}"
+    return "Running safety audit..."
 
 
 @tool
-def check_item_availability(item_name: str) -> str:
-    """Check if a specific item is currently available (stock, time restrictions)."""
-    return f"Checking availability for: {item_name}"
-
-
-# ─── ALLERGEN & NUTRITION TOOLS ───────────────────────────────────────────────
-
-@tool
-def check_allergens_in_cart() -> str:
+def get_item_detail(item_name: str) -> str:
     """
-    Check all items in the current cart against the customer's allergen profile.
-    Returns list of items with allergen conflicts.
-    Only meaningful if customer has a known profile.
+    Get detailed information about a menu item, including description, price, ingredients, and allergens.
     """
-    return "Checking allergens in cart..."
+    return f"Fetching details for {item_name}..."
 
 
 @tool
-def get_item_allergens(item_name: str) -> str:
-    """Get the full list of allergens and ingredients for a specific item."""
-    return f"Fetching allergens for: {item_name}"
+def explore_semantic(query: str, max_price: float = None, max_calories: int = None) -> str:
+    """
+    Search menu items using semantic search. Useful when the customer describes what they want vaguely.
+    """
+    return f"Exploring items matching: {query}..."
 
 
 @tool
-def get_nutrition_summary() -> str:
+def compare_items(item_a: str, item_b: str) -> str:
     """
-    Get the total nutritional breakdown of the current cart.
-    Returns calories, protein, carbs, fat. Use only when customer asks.
+    Compare two menu items in detail (ingredients, allergens, price, nutrition).
     """
-    return "Fetching nutrition summary..."
-
-
-# ─── PERSONALISATION TOOLS ────────────────────────────────────────────────────
-
-@tool
-def get_last_order(customer_phone: str) -> str:
-    """
-    Get the customer's most recent order at this restaurant.
-    Use when customer says 'same as last time' or 'my usual'.
-    """
-    return f"Fetching last order for customer: {customer_phone}"
+    return f"Comparing {item_a} and {item_b}..."
 
 
 @tool
-def get_popular_pairings(item_name: str) -> str:
+def get_recommendations(time_of_day: str = "day") -> str:
     """
-    Get the item most commonly ordered alongside this one.
-    Call ONCE per session after the first item is added.
-    Returns None if no strong pairing exists.
+    Get item recommendations based on popularity, personalization, and time of day.
     """
-    return f"Fetching popular pairings for: {item_name}"
+    return f"Fetching recommendations for {time_of_day}..."
 
 
 @tool
-def save_customer_preference(
-    customer_phone: str,
-    preference_type: str,   # "allergen" | "dietary" | "name" | "language"
-    value: str,
-) -> str:
+def suggest_complete_meal(budget: float, goal: str = "balanced") -> str:
     """
-    Save a preference to the customer's profile for future visits.
-    Only call AFTER customer explicitly said "yes, remember this" or similar.
+    Suggest a complete meal (starter + main + drink/dessert) fitting within a target budget.
     """
-    return f"Saving preference {preference_type} for customer: {customer_phone}"
-
-
-# ─── PROMOTIONS & RULES TOOLS ─────────────────────────────────────────────────
-
-@tool
-def get_active_promotions() -> str:
-    """
-    List all currently active promotions and deals.
-    Use to answer questions about today's specials or discounts.
-    """
-    return "Fetching active promotions..."
+    return f"Suggesting meal under ${budget} (goal: {goal})..."
 
 
 @tool
-def validate_order_rules() -> str:
+def get_pairings(item_name: str) -> str:
     """
-    Validate the current order against all active order rules (limits, minimums, etc.).
-    ALWAYS call this before confirming an order.
-    Returns {"valid": bool, "issues": [{"description": str, "suggestion": str}]}
+    Get common pairings and side recommendations for a specific menu item.
     """
-    return "Validating order rules..."
+    return f"Getting pairings for {item_name}..."
+
+
+@tool
+def get_restaurant_info(field: str) -> str:
+    """
+    Get general restaurant information. Allowed field values:
+    'hours', 'payment', 'delivery', 'address', 'phone', 'wifi', 'parking', 'general'.
+    """
+    return f"Getting restaurant {field} information..."
+
+
+@tool
+def find_by_description(description: str) -> str:
+    """
+    Find a specific menu item based on customer's fuzzy description of it.
+    """
+    return f"Finding item by description: {description}..."
+
+
+@tool
+def get_last_order() -> str:
+    """
+    Fetch the customer's previous completed order details.
+    """
+    return "Fetching last order details..."
+
+
+@tool
+def get_active_offers() -> str:
+    """
+    Retrieve active offers, promotions, discounts, and order rules (e.g. minimum order limits).
+    Use this when the customer asks about deals, discounts, promotions, or coupons, or when checking order conditions.
+    """
+    return "Fetching active offers and promotions..."
 
 
 # ─── ORDER LIFECYCLE TOOLS ────────────────────────────────────────────────────
 
 @tool
-def get_order_summary() -> str:
-    """
-    Get a formatted summary of the current order with items, modifications,
-    applied discounts, and total. Call when customer asks what's in their order.
-    """
-    return "Fetching order summary..."
-
-
-@tool
 def confirm_order(payment_method: str = "card") -> str:
     """
     Finalize and place the order. Call ONLY after:
-    1. validate_order_rules() returned valid=True
-    2. Customer explicitly confirmed (said "yes", "confirm", "place it", etc.)
+    1. Customer explicitly confirmed (said "yes", "confirm", "place it", etc.)
     Do NOT call this proactively.
     """
     return f"Confirming order with payment: {payment_method}"
 
 
-# Export all
+# Export all tools
 ORDER_TOOLS = [
-    add_item, add_item_with_modifications, remove_item,
-    update_item_quantity, clear_order,
-    search_menu, get_menu_category, check_item_availability,
-    check_allergens_in_cart, get_item_allergens, get_nutrition_summary,
-    get_last_order, get_popular_pairings, save_customer_preference,
-    get_active_promotions, validate_order_rules,
-    get_order_summary, confirm_order,
+    # Modifications
+    add_item,
+    add_item_with_modifications,
+    remove_item,
+    update_item_quantity,
+    clear_order,
+    confirm_order,
+
+    # Intelligence
+    safety_audit,
+    get_item_detail,
+    explore_semantic,
+    compare_items,
+    get_recommendations,
+    suggest_complete_meal,
+    get_pairings,
+    get_restaurant_info,
+    find_by_description,
+    get_last_order,
+    get_active_offers,
 ]

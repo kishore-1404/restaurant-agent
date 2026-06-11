@@ -1,7 +1,9 @@
 from sqlalchemy import select, text
-from langchain_core.messages import SystemMessage, AIMessage, ToolMessage
+from langchain_core.messages import SystemMessage, AIMessage, ToolMessage, HumanMessage, RemoveMessage
 from core.state import OrderState, CartItem
 import time
+import re
+import logging
 from decimal import Decimal
 from datetime import datetime
 from core.tools import ORDER_TOOLS
@@ -16,9 +18,23 @@ from services.allergen_service import AllergenService
 from services.profile_service import ProfileService
 from services.rule_service import RuleService
 
+logger = logging.getLogger(__name__)
+
 # Bind tools to the LLM once at startup
 _llm = llm_provider.get_chat_model()
 _llm_with_tools = _llm.bind_tools(ORDER_TOOLS)
+
+
+def _sanitise_message_for_history(content: str) -> str:
+    """
+    Strip any tool result JSON that might contain customer PII
+    before it enters long-term conversation history.
+    Tool results are ephemeral — they inform the current response
+    but should not persist across summary boundaries.
+    """
+    if content.startswith("[PRE-LOADED FACTS"):
+        return "[Facts loaded and communicated]"  # replaced after use
+    return content
 
 
 async def chatbot_node(state: OrderState) -> dict:
@@ -28,8 +44,29 @@ async def chatbot_node(state: OrderState) -> dict:
     """
     from monitoring.hooks import emit_agent_state
     from core.session_context import build_session_context
+    from core.context_manager import should_summarise, summarise_and_prune
+    from redis_client import cache as redis_cache
 
     emit_agent_state(state, state["session_id"], node_name="chatbot")
+
+    messages = list(state["messages"])
+    updated_state_fields = {}
+
+    # ─── 1. Context Manager: Turn/Token Budget Pruning ───
+    messages_update = []
+    if await should_summarise(messages):
+        messages_update, messages = await summarise_and_prune(
+            messages=messages,
+            session_id=state["session_id"],
+            llm_client=_llm,
+            redis_cache=redis_cache
+        )
+        updated_state_fields["messages"] = messages_update
+
+    # ─── 2. PII Sanitisation of history messages ───
+    for msg in messages:
+        if hasattr(msg, "content") and isinstance(msg.content, str):
+            msg.content = _sanitise_message_for_history(msg.content)
 
     async with AsyncSessionFactory() as db:
         # Load restaurant config
@@ -44,7 +81,6 @@ async def chatbot_node(state: OrderState) -> dict:
             language_code=state.get("language_code")
         )
 
-        updated_state_fields = {}
         if ctx.language_code != state.get("language_code"):
             updated_state_fields["language_code"] = ctx.language_code
         if ctx.customer_profile:
@@ -71,7 +107,7 @@ async def chatbot_node(state: OrderState) -> dict:
                 updated_state_fields["customer_name"] = None
 
         # Detect language from first message if not set
-        user_messages = [m for m in state["messages"] if m.type == "human"]
+        user_messages = [m for m in messages if m.type == "human"]
         if user_messages and not state.get("language_code"):
             try:
                 from langdetect import detect
@@ -84,15 +120,28 @@ async def chatbot_node(state: OrderState) -> dict:
             except Exception:
                 pass
 
-        # Build system prompt dynamically from restaurant + menu
+        # ─── 3. Pre-dispatch: match user intent and preload facts ───
+        last_message = messages[-1] if messages else None
+        if last_message and isinstance(last_message, HumanMessage):
+            from core.pre_dispatch import run_pre_dispatch
+            predispatch_facts = await run_pre_dispatch(last_message.content, ctx, db)
+            ctx.predispatch_facts = predispatch_facts
+
+        # Build system prompt dynamically from restaurant + menu + preloaded facts
         system_prompt = build_system_prompt(ctx, state["cart"], state["stage"])
 
     # Prepend system message to conversation history
-    messages = [SystemMessage(content=system_prompt)] + state["messages"]
+    full_messages = [SystemMessage(content=system_prompt)] + messages
 
     # Call LLM
-    response = await _llm_with_tools.ainvoke(messages)
-    return {"messages": [response], **updated_state_fields}
+    response = await _llm_with_tools.ainvoke(full_messages)
+    
+    # If we pruned the context, we return the complete messages_update list + new LLM response.
+    # Otherwise, LangGraph add_messages will just append our single response.
+    if messages_update:
+        return {"messages": messages_update + [response], **updated_state_fields}
+    else:
+        return {"messages": [response], **updated_state_fields}
 
 
 async def tool_executor(state: OrderState) -> dict:
@@ -146,12 +195,43 @@ async def tool_executor(state: OrderState) -> dict:
                     else:
                         menu_item = await MenuService.get_item_by_id(db, items[0]["id"], state["restaurant_id"])
                         
-                        # Check allergen block
-                        item_allergens = menu_item.allergens or []
-                        overlapping_strict = list(set(item_allergens) & set(strict_allergens))
+                        # Check safety using PG safety_audit function
+                        from services.intelligence_service import IntelligenceService as IS
+                        audit = await IS.safety_audit(
+                            db,
+                            allergens=warn_allergens,
+                            dietary=customer_profile.get("dietary_restrictions", []) if customer_profile else [],
+                            restaurant_id=state["restaurant_id"],
+                            strict=strict_allergens,
+                            session_id=state["session_id"]
+                        )
                         
-                        if overlapping_strict:
-                            output = f"Cannot add {menu_item.name} because it contains allergens you must strictly avoid: {', '.join(overlapping_strict)}."
+                        unsafe_items = audit.get("data", {}).get("unsafe_items", [])
+                        modifiable_items = audit.get("data", {}).get("modifiable_items", [])
+                        
+                        is_unsafe = False
+                        conflict_details = ""
+                        
+                        # Find if this menu item is in unsafe_items
+                        for u in unsafe_items:
+                            if u["name"].lower() == menu_item.name.lower():
+                                is_unsafe = True
+                                conflict_details = f"contains allergens: {', '.join(u.get('conflicting_allergens', []))}"
+                                break
+                                
+                        # Or if it's in modifiable_items but added without modifications
+                        is_modifiable_only = False
+                        for m in modifiable_items:
+                            if m["name"].lower() == menu_item.name.lower():
+                                is_modifiable_only = True
+                                conflict_details = f"requires modification: {m.get('instruction')}"
+                                break
+                                
+                        if is_unsafe:
+                            output = f"Cannot add {menu_item.name} because it is unsafe: {conflict_details}."
+                            is_error = True
+                        elif is_modifiable_only:
+                            output = f"Cannot add {menu_item.name} directly: {conflict_details}."
                             is_error = True
                         else:
                             # Apply price rules
@@ -164,8 +244,8 @@ async def tool_executor(state: OrderState) -> dict:
                             )
                             output = f"Added {quantity}x {menu_item.name} to order."
                             
-                            # Telemetry & Warning for soft allergens
-                            overlapping_warn = list(set(item_allergens) & set(warn_allergens))
+                            # Warning for soft allergens if any
+                            overlapping_warn = list(set(menu_item.allergens or []) & set(warn_allergens))
                             if overlapping_warn:
                                 from monitoring.hooks import emit_allergen_event
                                 emit_allergen_event(menu_item.name, overlapping_warn, state["session_id"])
@@ -194,27 +274,33 @@ async def tool_executor(state: OrderState) -> dict:
                     else:
                         menu_item = await MenuService.get_item_by_id(db, items[0]["id"], state["restaurant_id"])
                         
-                        # Allergen Block
-                        item_allergens = menu_item.allergens or []
-                        overlapping_strict = list(set(item_allergens) & set(strict_allergens))
-                        
-                        if overlapping_strict:
-                            output = f"Cannot add {menu_item.name} because it contains allergens you must strictly avoid: {', '.join(overlapping_strict)}."
+                        # Validate mods
+                        applied_mods, rejected_mods, price_delta = await _validate_and_price_modifications(
+                            menu_item, remove, swap, add_extras
+                        )
+                        if rejected_mods:
+                            output = f"Failed to add item. Invalid modifications: {', '.join(rejected_mods)}"
                             is_error = True
                         else:
-                            # Validate mods
-                            applied_mods, rejected_mods, price_delta = await _validate_and_price_modifications(
-                                menu_item, remove, swap, add_extras
-                            )
-                            if rejected_mods:
-                                output = f"Failed to add item. Invalid modifications: {', '.join(rejected_mods)}"
+                            # Price rules apply to base price, then we add delta
+                            final_base, applied_rules = RuleService.apply_price_rules(menu_item, price_rules)
+                            final_price = final_base + price_delta
+                            original_price = menu_item.price + price_delta
+                            
+                            # Check safety of modified item. Since they removed some things,
+                            # we verify if the modifications removed the strict allergens.
+                            removed_ingredients = applied_mods.get("remove", [])
+                            item_allergens = menu_item.allergens or []
+                            
+                            # If strict allergen is in the base item's allergens, verify if the removed ingredients
+                            # actually made it safe. In our database schema/rules, we check if there are still strict allergen overlaps.
+                            remaining_allergens = list(set(item_allergens) - set(removed_ingredients))
+                            overlapping_strict = list(set(remaining_allergens) & set(strict_allergens))
+                            
+                            if overlapping_strict:
+                                output = f"Cannot add {menu_item.name} because it still contains strict allergens: {', '.join(overlapping_strict)}."
                                 is_error = True
                             else:
-                                # Price rules apply to base price, then we add delta
-                                final_base, applied_rules = RuleService.apply_price_rules(menu_item, price_rules)
-                                final_price = final_base + price_delta
-                                original_price = menu_item.price + price_delta
-                                
                                 await OrderService.add_item(
                                     db, state["order_id"], menu_item, quantity,
                                     price_snapshot=final_price, original_price=original_price,
@@ -222,8 +308,8 @@ async def tool_executor(state: OrderState) -> dict:
                                 )
                                 output = f"Added {quantity}x {menu_item.name} with modifications."
                                 
-                                # Allergen warnings
-                                overlapping_warn = list(set(item_allergens) & set(warn_allergens))
+                                # Allergen warnings for soft allergens
+                                overlapping_warn = list(set(remaining_allergens) & set(warn_allergens))
                                 if overlapping_warn:
                                     from monitoring.hooks import emit_allergen_event
                                     emit_allergen_event(menu_item.name, overlapping_warn, state["session_id"])
@@ -290,241 +376,7 @@ async def tool_executor(state: OrderState) -> dict:
                     await OrderService.recalculate_discounts(db, state["order_id"])
                     output = "Cleared all items from your order."
 
-                # ─── 6. search_menu ───
-                elif name == "search_menu":
-                    query = args.get("query")
-                    safe_only = args.get("safe_only", False)
-                    items = await MenuService.search_items(
-                        db, state["restaurant_id"], query, limit=5,
-                        safe_only=safe_only, customer_allergens=warn_allergens
-                    )
-                    if not items:
-                        output = "No matching items found on the menu."
-                    else:
-                        output = "Found the following matching items:\n" + "\n".join(
-                            f"- {item['name']} (${item['price']:.2f}): {item['description'] or ''}"
-                            for item in items
-                        )
-
-                # ─── 7. get_menu_category ───
-                elif name == "get_menu_category":
-                    cat_name = args.get("category_name")
-                    menu = await MenuService.get_contextual_menu(db, state["restaurant_id"], now_time)
-                    matching_cat = None
-                    for cat in menu.keys():
-                        if cat.lower() == cat_name.lower():
-                            matching_cat = cat
-                            break
-                    
-                    if not matching_cat:
-                        output = f"Could not find category '{cat_name}'."
-                    else:
-                        output = f"Items in {matching_cat}:\n" + "\n".join(
-                            f"- {item['name']} (${item['price']:.2f}): {item['description'] or ''}"
-                            for item in menu[matching_cat]
-                        )
-
-                # ─── 8. check_item_availability ───
-                elif name == "check_item_availability":
-                    item_name = args.get("item_name")
-                    items = await MenuService.search_items(db, state["restaurant_id"], item_name, limit=1)
-                    if not items:
-                        output = f"Could not find item '{item_name}'."
-                    else:
-                        menu_item = await MenuService.get_item_by_id(db, items[0]["id"], state["restaurant_id"])
-                        if menu_item.available_quantity is not None and menu_item.available_quantity <= 0:
-                            output = f"Sorry, {menu_item.name} is currently sold out."
-                        else:
-                            output = f"{menu_item.name} is available."
-
-                # ─── 9. check_allergens_in_cart ───
-                elif name == "check_allergens_in_cart":
-                    if not customer_profile:
-                        output = "No allergen profile on file. Please provide your phone number to check allergies."
-                    else:
-                        unsafe_items = []
-                        order = await OrderService.get_order_with_items(db, state["order_id"])
-                        for item in order.items:
-                            menu_item = await MenuService.get_item_by_id(db, item.menu_item_id, state["restaurant_id"])
-                            matched = list(set(menu_item.allergens or []) & set(warn_allergens))
-                            if matched:
-                                unsafe_items.append(f"{menu_item.name} contains: {', '.join(matched)}")
-                        
-                        if not unsafe_items:
-                            output = "Great news! No allergen conflicts detected for items in your cart."
-                        else:
-                            output = "Allergen warnings for your current cart:\n" + "\n".join(f"- {x}" for x in unsafe_items)
-
-                # ─── 10. get_item_allergens ───
-                elif name == "get_item_allergens":
-                    item_name = args.get("item_name")
-                    items = await MenuService.search_items(db, state["restaurant_id"], item_name, limit=1)
-                    if not items:
-                        output = f"Could not find item '{item_name}'."
-                    else:
-                        menu_item = await MenuService.get_item_by_id(db, items[0]["id"], state["restaurant_id"])
-                        ingredients = ", ".join(menu_item.ingredients or []) or "None listed"
-                        allergens = ", ".join(menu_item.allergens or []) or "None"
-                        output = f"{menu_item.name} ingredients: {ingredients}. Allergens: {allergens}."
-
-                # ─── 11. get_nutrition_summary ───
-                elif name == "get_nutrition_summary":
-                    order = await OrderService.get_order_with_items(db, state["order_id"])
-                    if not order or not order.items:
-                        output = "Your order is empty."
-                    else:
-                        calories, protein, carbs, fat = 0, 0, 0, 0
-                        for item in order.items:
-                            m = await MenuService.get_item_by_id(db, item.menu_item_id, state["restaurant_id"])
-                            nut = m.nutrition_info or {}
-                            calories += int(nut.get("calories", 0)) * item.quantity
-                            protein += float(nut.get("protein_g", 0)) * item.quantity
-                            carbs += float(nut.get("carbs_g", 0)) * item.quantity
-                            fat += float(nut.get("fat_g", 0)) * item.quantity
-                        
-                        output = f"Nutrition summary for your cart:\n- Calories: {calories} kcal\n- Protein: {protein:.1f}g\n- Carbs: {carbs:.1f}g\n- Fat: {fat:.1f}g"
-
-                # ─── 12. get_last_order ───
-                elif name == "get_last_order":
-                    phone = args.get("customer_phone")
-                    customer_phone = phone
-                    state_updates["customer_phone"] = phone
-                    
-                    last_order_items = await ProfileService.get_order_history_summary(db, phone, state["restaurant_id"])
-                    if not last_order_items:
-                        # Try to load profile to check if returning
-                        profile = await ProfileService.get_by_phone(db, phone)
-                        if profile:
-                            state_updates["customer_profile"] = {
-                                "id": profile.id,
-                                "name": profile.name,
-                                "phone": profile.phone,
-                                "email": profile.email,
-                                "language_code": profile.language_code,
-                                "dietary_restrictions": profile.dietary_restrictions,
-                                "allergens": profile.allergens,
-                                "strict_allergens": profile.strict_allergens,
-                                "preferences": profile.preferences
-                            }
-                        output = "Could not find any past completed orders for this phone number."
-                    else:
-                        output = f"Your last order: {last_order_items.replace('Frequent orders at this restaurant: ', '')}. Would you like to repeat it?"
-
-                # ─── 13. get_popular_pairings ───
-                elif name == "get_popular_pairings":
-                    item_name = args.get("item_name")
-                    items = await MenuService.search_items(db, state["restaurant_id"], item_name, limit=1)
-                    if not items:
-                        output = "Could not find item."
-                    else:
-                        item_id = items[0]["id"]
-                        
-                        # Query materialized view for pairing
-                        res = await db.execute(
-                            text("SELECT item_b_id, paired_item_name, paired_item_price, lift_score FROM top_pairings WHERE item_a_id = :id AND lift_score > 1.5"),
-                            {"id": item_id}
-                        )
-                        row = res.fetchone()
-                        if row and row.item_b_id not in upsells_shown_list:
-                            upsells_shown_list.append(row.item_b_id)
-                            state_updates["upsells_shown"] = upsells_shown_list
-                            
-                            from monitoring.hooks import emit_upsell
-                            emit_upsell(row.paired_item_name, items[0]["name"], float(row.lift_score), state["session_id"])
-                            
-                            output = f"Most people who order {items[0]['name']} also get {row.paired_item_name} (${float(row.paired_item_price):.2f}) — want one?"
-                        else:
-                            output = "No pairing recommendation available."
-
-                # ─── 14. save_customer_preference ───
-                elif name == "save_customer_preference":
-                    phone = args.get("customer_phone")
-                    pref_type = args.get("preference_type")
-                    val = args.get("value")
-                    
-                    profile = await ProfileService.get_by_phone(db, phone)
-                    profile_data = {"phone": phone}
-                    if profile:
-                        profile_data = {
-                            "phone": phone,
-                            "name": profile.name,
-                            "email": profile.email,
-                            "language_code": profile.language_code,
-                            "dietary_restrictions": list(profile.dietary_restrictions or []),
-                            "allergens": list(profile.allergens or []),
-                            "strict_allergens": list(profile.strict_allergens or []),
-                            "preferences": dict(profile.preferences or {})
-                        }
-                    
-                    if pref_type == "allergen":
-                        allergens = profile_data.setdefault("allergens", [])
-                        if val not in allergens:
-                            allergens.append(val)
-                    elif pref_type == "dietary":
-                        dietary = profile_data.setdefault("dietary_restrictions", [])
-                        if val not in dietary:
-                            dietary.append(val)
-                    elif pref_type == "language":
-                        profile_data["language_code"] = val
-                    elif pref_type == "name":
-                        profile_data["name"] = val
-
-                    updated_profile = await ProfileService.upsert_profile(db, profile_data)
-                    state_updates["customer_phone"] = phone
-                    state_updates["customer_profile"] = {
-                        "id": updated_profile.id,
-                        "name": updated_profile.name,
-                        "phone": updated_profile.phone,
-                        "email": updated_profile.email,
-                        "language_code": updated_profile.language_code,
-                        "dietary_restrictions": updated_profile.dietary_restrictions,
-                        "allergens": updated_profile.allergens,
-                        "strict_allergens": updated_profile.strict_allergens,
-                        "preferences": updated_profile.preferences
-                    }
-                    output = f"Saved your {pref_type} preference: '{val}'."
-
-                # ─── 15. get_active_promotions ───
-                elif name == "get_active_promotions":
-                    promos = []
-                    for r in price_rules:
-                        promos.append(f"- {r.label}: {r.description}")
-                    if not promos:
-                        output = "No promotions are currently active today."
-                    else:
-                        output = "Active promotions today:\n" + "\n".join(promos)
-
-                # ─── 16. validate_order_rules ───
-                elif name == "validate_order_rules":
-                    res = await RuleService.validate_order_rules(db, state["order_id"], state["restaurant_id"])
-                    
-                    # Telemetry
-                    if not res["valid"]:
-                        for violation in res["violations"]:
-                            from monitoring.hooks import emit_rule_violation
-                            # Wait, does emit_rule_violation exist? Let's check monitoring/hooks.py
-                            # If not, we can run general event or create it. Let's make sure we check
-                            # or just emit to EventBus
-                            from monitoring.events import bus, Event, EK
-                            bus.emit(Event(
-                                kind=EK.RULE,
-                                title=f"Rule hit: {violation['rule']}",
-                                session_id=state["session_id"],
-                                detail=violation
-                            ))
-                    
-                    import json
-                    output = json.dumps(res)
-
-                # ─── 17. get_order_summary ───
-                elif name == "get_order_summary":
-                    order = await OrderService.get_order_with_items(db, state["order_id"])
-                    if not order or not order.items:
-                        output = "Your order is currently empty."
-                    else:
-                        output = OrderService.format_receipt(order)
-
-                # ─── 18. confirm_order ───
+                # ─── 6. confirm_order ───
                 elif name == "confirm_order":
                     pay_method = args.get("payment_method", "card")
                     res = await RuleService.validate_order_rules(db, state["order_id"], state["restaurant_id"])
@@ -538,6 +390,143 @@ async def tool_executor(state: OrderState) -> dict:
                         
                         output = f"Placed! Order #{order.id}: " + ", ".join(f"{i.name_snapshot} x{i.quantity}" for i in order.items) + f" — ${float(order.total):.2f}."
 
+                # ─── 7. safety_audit ───
+                elif name == "safety_audit":
+                    allergens_list = args.get("allergens") or warn_allergens or []
+                    dietary_list = args.get("dietary") or (customer_profile.get("dietary_restrictions", []) if customer_profile else [])
+                    strict_list = customer_profile.get("strict_allergens", []) if customer_profile else []
+                    from services.intelligence_service import IntelligenceService as IS
+                    res = await IS.safety_audit(db, allergens_list, dietary_list, state["restaurant_id"], strict=strict_list, session_id=state["session_id"])
+                    import json
+                    output = json.dumps(res)
+
+                # ─── 8. get_item_detail ───
+                elif name == "get_item_detail":
+                    item_name = args.get("item_name")
+                    from services.intelligence_service import IntelligenceService as IS
+                    res = await IS.get_item_detail(db, item_name, state["restaurant_id"])
+                    import json
+                    output = json.dumps(res)
+
+                # ─── 9. explore_semantic ───
+                elif name == "explore_semantic":
+                    query = args.get("query")
+                    from core.pre_dispatch import _embed
+                    embedding = await _embed(query)
+                    if not embedding:
+                        output = "Could not generate embedding for query."
+                        is_error = True
+                    else:
+                        from services.intelligence_service import IntelligenceService as IS
+                        res = await IS.explore_semantic(
+                            db=db,
+                            query_embedding=embedding,
+                            restaurant_id=state["restaurant_id"],
+                            allergens=warn_allergens,
+                            dietary=customer_profile.get("dietary_restrictions", []) if customer_profile else [],
+                            max_price=args.get("max_price"),
+                            max_calories=args.get("max_calories"),
+                            session_id=state["session_id"],
+                            query_text=query
+                        )
+                        import json
+                        output = json.dumps(res)
+
+                # ─── 10. compare_items ───
+                elif name == "compare_items":
+                    item_a = args.get("item_a")
+                    item_b = args.get("item_b")
+                    from services.intelligence_service import IntelligenceService as IS
+                    res = await IS.compare_items(db, item_a, item_b, state["restaurant_id"])
+                    import json
+                    output = json.dumps(res)
+
+                # ─── 11. get_recommendations ───
+                elif name == "get_recommendations":
+                    tod = args.get("time_of_day", "day")
+                    from services.intelligence_service import IntelligenceService as IS
+                    res = await IS.get_recommendations(
+                        db=db,
+                        restaurant_id=state["restaurant_id"],
+                        allergens=warn_allergens,
+                        dietary=customer_profile.get("dietary_restrictions", []) if customer_profile else [],
+                        time_of_day=tod,
+                    )
+                    import json
+                    output = json.dumps(res)
+
+                # ─── 12. suggest_complete_meal ───
+                elif name == "suggest_complete_meal":
+                    budget = float(args.get("budget"))
+                    goal = args.get("goal", "balanced")
+                    from services.intelligence_service import IntelligenceService as IS
+                    res = await IS.suggest_complete_meal(
+                        db=db,
+                        restaurant_id=state["restaurant_id"],
+                        budget=budget,
+                        allergens=warn_allergens,
+                        dietary=customer_profile.get("dietary_restrictions", []) if customer_profile else [],
+                        goal=goal,
+                    )
+                    import json
+                    output = json.dumps(res)
+
+                # ─── 13. get_pairings ───
+                elif name == "get_pairings":
+                    item_name = args.get("item_name")
+                    from services.intelligence_service import IntelligenceService as IS
+                    res = await IS.get_pairings(db, item_name, state["restaurant_id"], allergens=warn_allergens)
+                    import json
+                    output = json.dumps(res)
+
+                # ─── 14. get_restaurant_info ───
+                elif name == "get_restaurant_info":
+                    field = args.get("field")
+                    from services.intelligence_service import IntelligenceService as IS
+                    res = await IS.get_restaurant_info(db, field, state["restaurant_id"])
+                    import json
+                    output = json.dumps(res)
+
+                # ─── 15. find_by_description ───
+                elif name == "find_by_description":
+                    desc = args.get("description")
+                    from core.pre_dispatch import _embed
+                    embedding = await _embed(desc)
+                    from services.intelligence_service import IntelligenceService as IS
+                    res = await IS.find_by_description(
+                        db=db,
+                        description=desc,
+                        restaurant_id=state["restaurant_id"],
+                        allergens=warn_allergens,
+                        embedding=embedding,
+                        session_id=state["session_id"]
+                    )
+                    import json
+                    output = json.dumps(res)
+
+                # ─── 16. get_last_order ───
+                elif name == "get_last_order":
+                    if customer_phone:
+                        from services.intelligence_service import IntelligenceService as IS
+                        res = await IS.get_last_order(db, customer_phone, state["restaurant_id"])
+                        import json
+                        output = json.dumps(res)
+                    else:
+                        import json
+                        output = json.dumps({
+                            "status": "error",
+                            "data": {},
+                            "safety_flags": [],
+                            "llm_guidance": "Customer phone number not available. Cannot fetch last order."
+                        })
+
+                # ─── 17. get_active_offers ───
+                elif name == "get_active_offers":
+                    from services.intelligence_service import IntelligenceService as IS
+                    res = await IS.get_active_offers(db, state["restaurant_id"], state["order_id"])
+                    import json
+                    output = json.dumps(res)
+
                 else:
                     output = f"Unknown tool: {name}"
                     is_error = True
@@ -548,7 +537,7 @@ async def tool_executor(state: OrderState) -> dict:
 
             tool_messages.append(ToolMessage(content=output, tool_call_id=tool_call_id, name=name))
 
-            # Emit manual tool execution event to telemetry bus
+            # Emit tool execution event to telemetry bus
             duration_ms = (time.perf_counter() - t0) * 1000
             from monitoring.events import bus, Event, EK
             bus.emit(
@@ -618,6 +607,16 @@ def update_stage(state: OrderState) -> dict:
             word in last_ai.content.lower() for word in ["confirm", "place your order", "shall i"]
         ):
             stage = "confirming"
+    if stage == "confirming":
+        last_ai = next((m for m in reversed(messages) if isinstance(m, AIMessage)), None)
+        if last_ai and any(
+            word in last_ai.content.lower() for word in ["pay", "payment", "card", "cash"]
+        ):
+            stage = "payment"
+    
+    # Transition to done if confirm_order tool was successfully executed
+    if any(isinstance(m, ToolMessage) and m.name == "confirm_order" for m in messages):
+        stage = "done"
 
     new_state = {**state, "stage": stage}
     from monitoring.hooks import emit_agent_state

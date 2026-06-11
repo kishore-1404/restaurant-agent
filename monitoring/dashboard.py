@@ -56,6 +56,10 @@ _Q_COLOR: dict[EK, str] = {
     EK.PRICING: "light-green",
     EK.UPSELL: "orange",
     EK.RULE: "deep-orange",
+    EK.PRE_DISPATCH: "light-blue",
+    EK.SAFETY: "red",
+    EK.SEMANTIC: "green",
+    EK.CONTEXT: "orange",
 }
 
 _ICON: dict[EK, str] = {
@@ -71,6 +75,10 @@ _ICON: dict[EK, str] = {
     EK.PRICING: "sell",
     EK.UPSELL: "shopping_cart",
     EK.RULE: "gavel",
+    EK.PRE_DISPATCH: "find_in_page",
+    EK.SAFETY: "security",
+    EK.SEMANTIC: "psychology",
+    EK.CONTEXT: "history_edu",
 }
 # ─────────────────────────────────────────────────────────────────────────────
 # HELPERS
@@ -263,7 +271,7 @@ def _tab_timeline(filter_state: dict) -> dict:
     Main live event feed. Returns refs needed for the update timer.
     """
     with ui.row().classes("w-full items-center gap-2 q-mb-sm"):
-        ui.label("Live event stream — newest at bottom").style("color:#6272a4; font-size:12px;")
+        ui.label("Live event stream — newest at top").style("color:#6272a4; font-size:12px;")
         ui.space()
         clear_btn = ui.button("Clear", icon="delete_sweep", color="grey").props(
             "flat dense size=sm"
@@ -271,7 +279,7 @@ def _tab_timeline(filter_state: dict) -> dict:
 
     scroll = ui.scroll_area().classes("w-full").style("height: calc(100vh - 230px);")
     with scroll:
-        event_col = ui.column().classes("w-full gap-1")
+        event_col = ui.column().classes("w-full gap-1").style("display: flex; flex-direction: column-reverse;")
 
     # Seed with existing events
     for ev in bus.recent(80):
@@ -462,6 +470,7 @@ def _tab_tools() -> dict:
             "dur": e.dur_str,
             "ok": "✗" if e.is_error else "✓",
             "session": e.session_short,
+            "_detail": json.dumps(e.detail, default=str),
         }
         for e in reversed(bus.by_kind(EK.TOOL))
     ]
@@ -485,10 +494,37 @@ def _tab_tools() -> dict:
         </q-td>
     """,
     )
-    return {"tbl": tbl}
+
+    ui.separator().style("margin:12px 0;")
+    ui.label("Click a row to see full tool input / output details").style("color:#6272a4; font-size:12px;")
+    detail_box = (
+        ui.json_editor(properties={"content": {"json": {}}, "readOnly": True})
+        .classes("w-full")
+        .style("min-height:350px;")
+    )
+
+    def on_row_click(e):
+        try:
+            row = e.args[1] if len(e.args) > 1 else {}
+            detail_data = json.loads(row.get("_detail", "{}"))
+            # Try to parse stringified JSON in input/output for prettier display
+            for key in ["input", "output"]:
+                val = detail_data.get(key)
+                if isinstance(val, str):
+                    try:
+                        detail_data[key] = json.loads(val)
+                    except Exception:
+                        pass
+            detail_box.properties["content"] = {"json": detail_data}
+            detail_box.update()
+        except Exception:
+            pass
+
+    tbl.on("rowClick", on_row_click)
+    return {"tbl": tbl, "detail_box": detail_box}
 
 
-def _tab_agent() -> dict:
+def _tab_agent(on_session_change=None) -> dict:
     """Per-session OrderState snapshots — rendered as structured info + raw JSON."""
     sessions = bus.sessions()
 
@@ -570,6 +606,7 @@ def _tab_agent() -> dict:
                 ui.label("No active session.").style("color:#6272a4; font-size:12px; padding:12px;")
             state_code.properties["content"] = {"json": {}}
             state_code.update()
+            cart_container.update()
             return
 
         events = [e for e in bus.by_session(session_id) if e.kind == EK.AGENT]
@@ -585,6 +622,7 @@ def _tab_agent() -> dict:
                 )
             state_code.properties["content"] = {"json": {"message": "No agent state captured yet."}}
             state_code.update()
+            cart_container.update()
             return
 
         # Get latest agent state
@@ -652,24 +690,33 @@ def _tab_agent() -> dict:
                         "align": "right",
                     },
                 ]
-                rows = [
-                    {
+                rows = []
+                for i in cart:
+                    p = float(i.get("price", 0))
+                    orig = float(i.get("original_price", p))
+                    q = int(i.get("quantity", 1))
+
+                    price_str = f"${p:.2f}"
+                    if p < orig:
+                        price_str = f"${p:.2f} (was ${orig:.2f})"
+
+                    rows.append({
                         "name": i.get("name", "?"),
-                        "price": f"${i.get('price', 0):.2f}",
-                        "qty": f"×{i.get('quantity', 1)}",
-                        "subtotal": f"${(i.get('price', 0) * i.get('quantity', 1)):.2f}",
-                    }
-                    for i in cart
-                ]
+                        "price": price_str,
+                        "qty": f"×{q}",
+                        "subtotal": f"${(p * q):.2f}",
+                    })
                 ui.table(columns=cols, rows=rows, row_key="name").classes("w-full").props(
                     "dense flat"
                 )
+        cart_container.update()
 
         # Update JSON code block
         state_code.properties["content"] = {"json": state_dict}
         state_code.update()
 
-    session_select.on_value_change(lambda e: load_session(e.value))
+    if on_session_change:
+        session_select.on_value_change(lambda e: on_session_change(e.value))
 
     # Auto-load initial value
     if sessions:
@@ -740,6 +787,87 @@ def _tab_pricing() -> dict:
     ]
     tbl = ui.table(columns=cols, rows=rows, row_key="ts").classes("w-full").props("dense flat")
     return {"tbl": tbl}
+
+
+def _tab_intelligence() -> dict:
+    """Intelligence events tab: Pre-dispatch, Safety audits, Semantic search, and Context prunings."""
+    # Calculate stats for metrics
+    pd_total = sum(1 for e in bus.by_kind(EK.PRE_DISPATCH))
+    sf_total = sum(1 for e in bus.by_kind(EK.SAFETY))
+    sm_total = sum(1 for e in bus.by_kind(EK.SEMANTIC))
+    cx_total = sum(1 for e in bus.by_kind(EK.CONTEXT))
+
+    with ui.row().classes("gap-4 q-mb-md"):
+        with ui.card().style(f"background:{_CARD_BG}; border:1px solid {_BORDER}; padding:10px 16px; min-width:140px;"):
+            ui.label("Pre-dispatch Matches").style("color:#6272a4; font-size:11px;")
+            pd_label = ui.label(str(pd_total)).style("color:#80d8ff; font-size:20px; font-weight:600;")
+        with ui.card().style(f"background:{_CARD_BG}; border:1px solid {_BORDER}; padding:10px 16px; min-width:140px;"):
+            ui.label("Safety Audits").style("color:#6272a4; font-size:11px;")
+            sf_label = ui.label(str(sf_total)).style("color:#ff5252; font-size:20px; font-weight:600;")
+        with ui.card().style(f"background:{_CARD_BG}; border:1px solid {_BORDER}; padding:10px 16px; min-width:140px;"):
+            ui.label("Semantic Searches").style("color:#6272a4; font-size:11px;")
+            sm_label = ui.label(str(sm_total)).style("color:#b9f6ca; font-size:20px; font-weight:600;")
+        with ui.card().style(f"background:{_CARD_BG}; border:1px solid {_BORDER}; padding:10px 16px; min-width:140px;"):
+            ui.label("Context Prunings").style("color:#6272a4; font-size:11px;")
+            cx_label = ui.label(str(cx_total)).style("color:#ffd180; font-size:20px; font-weight:600;")
+
+    # Get recent events from bus
+    intel_kinds = {EK.PRE_DISPATCH, EK.SAFETY, EK.SEMANTIC, EK.CONTEXT}
+    rows = [
+        {
+            "ts": e.ts.strftime("%H:%M:%S"),
+            "type": e.kind.value.upper(),
+            "title": e.title,
+            "session": e.session_short,
+            "_detail": json.dumps(e.detail, default=str),
+        }
+        for e in reversed(bus.all_events())
+        if e.kind in intel_kinds
+    ]
+    cols = [
+        {"name": "ts", "label": "Time", "field": "ts", "align": "left"},
+        {"name": "type", "label": "Type", "field": "type", "align": "left"},
+        {"name": "title", "label": "Summary", "field": "title", "align": "left"},
+        {"name": "session", "label": "Session", "field": "session", "align": "left"},
+    ]
+    tbl = ui.table(columns=cols, rows=rows, row_key="ts").classes("w-full").props("dense flat")
+    tbl.add_slot(
+        "body-cell-type",
+        """
+        <q-td :props="props">
+          <q-badge
+            :color="props.value === 'PREDISPATCH' ? 'light-blue' : props.value === 'SAFETY' ? 'red' : props.value === 'SEMANTIC' ? 'green' : 'orange'"
+            :label="props.value" />
+        </q-td>
+        """,
+    )
+
+    ui.separator().style("margin:12px 0;")
+    ui.label("Click a row to see details (parameters, matches, safety flags, summaries, etc.)").style("color:#6272a4; font-size:12px;")
+    detail_box = (
+        ui.json_editor(properties={"content": {"json": {}}, "readOnly": True})
+        .classes("w-full")
+        .style("min-height:350px;")
+    )
+
+    def on_row_click(e):
+        try:
+            row = e.args[1] if len(e.args) > 1 else {}
+            detail_data = json.loads(row.get("_detail", "{}"))
+            detail_box.properties["content"] = {"json": detail_data}
+            detail_box.update()
+        except Exception:
+            pass
+
+    tbl.on("rowClick", on_row_click)
+    return {
+        "tbl": tbl,
+        "pd_label": pd_label,
+        "sf_label": sf_label,
+        "sm_label": sm_label,
+        "cx_label": cx_label,
+        "detail_box": detail_box,
+    }
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -855,6 +983,7 @@ def _build_page():
                 ("errors", "Errors", "error_outline"),
                 ("allergens", "Allergens", "warning"),
                 ("pricing", "Pricing", "sell"),
+                ("intelligence", "Intelligence", "psychology"),
             ]:
                 with ui.tab(name, label=label, icon=icon_name).props("no-caps"):
                     pass
@@ -873,18 +1002,27 @@ def _build_page():
             with ui.tab_panel("tools"):
                 tool_refs = _tab_tools()
             with ui.tab_panel("agent"):
-                agent_refs = _tab_agent()
+                agent_refs = _tab_agent(on_session_change=lambda val: select_session_filter(val))
             with ui.tab_panel("errors"):
                 err_refs = _tab_errors()
             with ui.tab_panel("allergens"):
                 allergens_refs = _tab_allergens()
             with ui.tab_panel("pricing"):
                 pricing_refs = _tab_pricing()
+            with ui.tab_panel("intelligence"):
+                intelligence_refs = _tab_intelligence()
 
     # ── Helper: select session filter ──
     def select_session_filter(sid: str | None):
+        if filter_state.get("session_id") == sid:
+            return
         filter_state["session_id"] = sid
         rebuild_views()
+        if "select" in agent_refs:
+            if agent_refs["select"].value != sid:
+                agent_refs["select"].value = sid
+        if sid:
+            agent_refs["load_session_fn"](sid)
 
     # ── Helper: render sidebar sessions ──
     def render_sidebar_sessions():
@@ -996,7 +1134,7 @@ def _build_page():
         for ev in filtered_recent:
             if filter_state.get(ev.kind, True):
                 _event_card(ev, tl_refs["event_col"])
-        tl_refs["scroll"].scroll_to(percent=1.0)
+        tl_refs["scroll"].scroll_to(percent=0.0)
 
         # 2. LLM Tab: Re-populate rows
         if "tbl" in llm_refs:
@@ -1071,6 +1209,7 @@ def _build_page():
                     "dur": e.dur_str,
                     "ok": "✗" if e.is_error else "✓",
                     "session": e.session_short,
+                    "_detail": json.dumps(e.detail, default=str),
                 }
                 for e in reversed(tool_events)
             ]
@@ -1116,6 +1255,36 @@ def _build_page():
             ]
             pricing_refs["tbl"].update()
 
+        # 10. Intelligence Tab: Re-populate rows
+        if "tbl" in intelligence_refs:
+            intel_kinds = {EK.PRE_DISPATCH, EK.SAFETY, EK.SEMANTIC, EK.CONTEXT}
+            intel_events = [e for e in events if e.kind in intel_kinds]
+            intelligence_refs["tbl"].rows = [
+                {
+                    "ts": e.ts.strftime("%H:%M:%S"),
+                    "type": e.kind.value.upper(),
+                    "title": e.title,
+                    "session": e.session_short,
+                    "_detail": json.dumps(e.detail, default=str),
+                }
+                for e in reversed(intel_events)
+            ]
+            intelligence_refs["tbl"].update()
+
+            # update counters
+            pd_total = sum(1 for e in intel_events if e.kind == EK.PRE_DISPATCH)
+            sf_total = sum(1 for e in intel_events if e.kind == EK.SAFETY)
+            sm_total = sum(1 for e in intel_events if e.kind == EK.SEMANTIC)
+            cx_total = sum(1 for e in intel_events if e.kind == EK.CONTEXT)
+            if "pd_label" in intelligence_refs:
+                intelligence_refs["pd_label"].set_text(str(pd_total))
+            if "sf_label" in intelligence_refs:
+                intelligence_refs["sf_label"].set_text(str(sf_total))
+            if "sm_label" in intelligence_refs:
+                intelligence_refs["sm_label"].set_text(str(sm_total))
+            if "cx_label" in intelligence_refs:
+                intelligence_refs["cx_label"].set_text(str(cx_total))
+
         # 7. Update metric strip and sidebar sessions list
         render_sidebar_sessions()
         update_metrics()
@@ -1144,7 +1313,7 @@ def _build_page():
             if filter_state.get(ev.kind, True):
                 _event_card(ev, tl_refs["event_col"])
                 # Auto-scroll
-                tl_refs["scroll"].scroll_to(percent=1.0)
+                tl_refs["scroll"].scroll_to(percent=0.0)
 
         # ── Update Individual Tabs ──
         for ev in batch:
@@ -1216,6 +1385,7 @@ def _build_page():
                     "dur": ev.dur_str,
                     "ok": "✗" if ev.is_error else "✓",
                     "session": ev.session_short,
+                    "_detail": json.dumps(ev.detail, default=str),
                 }
                 tool_refs["tbl"].rows.insert(0, new_row)
                 tool_refs["tbl"].update()
@@ -1242,6 +1412,39 @@ def _build_page():
                 }
                 pricing_refs["tbl"].rows.insert(0, new_row)
                 pricing_refs["tbl"].update()
+
+            elif ev.kind in {EK.PRE_DISPATCH, EK.SAFETY, EK.SEMANTIC, EK.CONTEXT} and "tbl" in intelligence_refs:
+                new_row = {
+                    "ts": ev.ts.strftime("%H:%M:%S"),
+                    "type": ev.kind.value.upper(),
+                    "title": ev.title,
+                    "session": ev.session_short,
+                    "_detail": json.dumps(ev.detail, default=str),
+                }
+                intelligence_refs["tbl"].rows.insert(0, new_row)
+                intelligence_refs["tbl"].update()
+
+                # update counters
+                if selected_sid:
+                    session_events = bus.by_session(selected_sid)
+                    pd_total = sum(1 for e in session_events if e.kind == EK.PRE_DISPATCH)
+                    sf_total = sum(1 for e in session_events if e.kind == EK.SAFETY)
+                    sm_total = sum(1 for e in session_events if e.kind == EK.SEMANTIC)
+                    cx_total = sum(1 for e in session_events if e.kind == EK.CONTEXT)
+                else:
+                    pd_total = sum(1 for e in bus.by_kind(EK.PRE_DISPATCH))
+                    sf_total = sum(1 for e in bus.by_kind(EK.SAFETY))
+                    sm_total = sum(1 for e in bus.by_kind(EK.SEMANTIC))
+                    cx_total = sum(1 for e in bus.by_kind(EK.CONTEXT))
+
+                if "pd_label" in intelligence_refs:
+                    intelligence_refs["pd_label"].set_text(str(pd_total))
+                if "sf_label" in intelligence_refs:
+                    intelligence_refs["sf_label"].set_text(str(sf_total))
+                if "sm_label" in intelligence_refs:
+                    intelligence_refs["sm_label"].set_text(str(sm_total))
+                if "cx_label" in intelligence_refs:
+                    intelligence_refs["cx_label"].set_text(str(cx_total))
 
             elif ev.kind == EK.AGENT and "select" in agent_refs:
                 # If this is the currently selected session in the dropdown, update the entire view

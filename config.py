@@ -29,6 +29,12 @@ class Settings(BaseSettings):
     llamacpp_base_url: str = "http://localhost:8081/v1"
     llamacpp_model_name: str = "local-model"
 
+    # Embeddings
+    embedding_provider: str = "gemini"  # "gemini" | "openai_compatible" | "llamacpp" | "ollama"
+    embedding_model: str = "gemini-embedding-2"
+    embedding_base_url: str = ""
+    embedding_api_key: str = ""
+
     # Cache
     menu_cache_ttl_seconds: int = 300
 

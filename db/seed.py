@@ -300,14 +300,14 @@ RESTAURANTS = [
       {
         "name": "Weekday Happy Hour",
         "label": "Happy Hour",
-        "description": "20% off all drinks, Mon–Fri 3pm–6pm",
+        "description": "20% off all drinks, all days, all times",
         "rule_type": "percentage_off",
         "value": 20,
         "applies_to": "category",
         "applies_to_name": "Drinks",
-        "valid_days": [1, 2, 3, 4, 5],  # Mon=1 ... Fri=5
-        "valid_from": time(15, 0),
-        "valid_until": time(18, 0),
+        "valid_days": None,
+        "valid_from": None,
+        "valid_until": None,
         "priority": 10,
       },
       {
@@ -1331,9 +1331,19 @@ async def run_seed():
             """))
             await db2.commit()
 
+        # Seed intent definitions
+        logger.info("Seeding intent definitions for pre-dispatch...")
+        from db.intent_seed import seed_intent_definitions
+        await seed_intent_definitions()
+
         logger.info(
             f"Seed complete: {len(RESTAURANTS)} restaurants, "
             f"{len(item_map)} items, "
             f"{len(CUSTOMER_PROFILES)} profiles, "
             f"historical orders seeded."
         )
+
+
+if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO)
+    asyncio.run(run_seed())

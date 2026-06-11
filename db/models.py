@@ -3,10 +3,11 @@ from decimal import Decimal
 from typing import Optional
 from sqlalchemy import (
     Integer, String, Text, Boolean, Numeric, DateTime,
-    ForeignKey, Index, func, Time, Date, FetchedValue
+    ForeignKey, Index, func, Time, Date, FetchedValue, Float
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import JSONB, TSVECTOR, ARRAY, TSTZRANGE
+from pgvector.sqlalchemy import Vector
 from db.base import Base
 
 
@@ -102,6 +103,7 @@ class MenuItem(Base):
     translations: Mapped[Optional[dict]] = mapped_column(JSONB, server_default="{}")
     available_quantity: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     display_order: Mapped[Optional[int]] = mapped_column(Integer, default=0, server_default="0")
+    embedding: Mapped[Optional[list[float]]] = mapped_column(Vector(768), nullable=True)
 
     # Allergen flags generated columns (mapped as read-only)
     has_gluten: Mapped[Optional[bool]] = mapped_column(Boolean, FetchedValue())
@@ -279,3 +281,20 @@ class ItemAffinity(Base):
     co_occurrence: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     lift_score: Mapped[Optional[Decimal]] = mapped_column(Numeric(6, 3))
     last_computed: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+# ─────────────────────────────────────────────────────────────
+# INTENT DEFINITIONS  (pgvector Pre-Dispatch lookup)
+# ─────────────────────────────────────────────────────────────
+class IntentDefinition(Base):
+    __tablename__ = "intent_definitions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    intent_code: Mapped[str] = mapped_column(String(60), nullable=False, index=True)
+    example_query: Mapped[str] = mapped_column(Text, nullable=False)
+    embedding: Mapped[Optional[list[float]]] = mapped_column(Vector(768), nullable=True)
+    tool_name: Mapped[str] = mapped_column(String(100), nullable=False)
+    tool_params_hint: Mapped[dict] = mapped_column(JSONB, server_default="{}", default=dict)
+    is_safety_critical: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false", index=True)
+    similarity_threshold: Mapped[float] = mapped_column(Float, default=0.80, server_default="0.80")
+    priority: Mapped[int] = mapped_column(Integer, default=5, server_default="5")
